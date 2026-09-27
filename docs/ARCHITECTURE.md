@@ -1,17 +1,25 @@
 # Architecture
 
-## Milestone 001 scope
+## Scope
 
-This milestone builds the hardware/sensor foundation only. There is no UI,
-database, cost calculator, or gaming analytics yet -- those are future
+- **Milestone 001:** hardware discovery, sensor classification, sampling,
+  JSON export.
+- **Milestone 002:** energy integration, wall-power estimation, electricity
+  cost, SQLite persistence, session lifecycle. Calculation rules:
+  `docs/ENERGY_MODEL.md`; storage: `docs/STORAGE.md`.
+
+There is still no desktop UI and no gaming analytics -- those are future
 milestones, built on top of `WattScope.Core`'s abstractions without needing
-to know LibreHardwareMonitor or NVML exist.
+to know LibreHardwareMonitor, NVML, or SQLite exist.
 
 ## Projects
 
 ```
-WattScope.Core        Provider-agnostic domain model + orchestration logic.
-                       No dependency on any concrete monitoring backend.
+WattScope.Core        Provider-agnostic domain model + orchestration logic:
+                       classification, sampling, energy integration,
+                       estimation, pricing, reporting, session lifecycle
+                       (EnergyMonitor behind IEnergyStore). No dependency on
+                       any monitoring backend, database, or UI.
                        Depends only on Microsoft.Extensions.Logging.Abstractions.
 
 WattScope.Hardware     Concrete ISensorProvider implementations
@@ -19,21 +27,29 @@ WattScope.Hardware     Concrete ISensorProvider implementations
                        inventory and the DiscoveryService that ties them
                        together. Windows-only (net10.0-windows).
 
-WattScope.Probe        Standalone CLI. References Core + Hardware. This is
-                       the only executable in Milestone 001 -- there is no
-                       desktop UI yet.
+WattScope.Storage      SQLite implementation of IEnergyStore
+                       (Microsoft.Data.Sqlite): schema migrations, sessions,
+                       compact samples, energy buckets, gaps, availability,
+                       prices, settings, retention, crash recovery, monitor
+                       lock. Cross-platform (net10.0).
 
-WattScope.Core.Tests       xUnit, fully mocked (FakeSensorProvider), no
-                            hardware dependency -- runs anywhere.
+WattScope.Probe        Standalone CLI. References Core + Hardware + Storage.
+                       Still the only executable -- no desktop UI yet.
+
+WattScope.Core.Tests       xUnit, fully mocked / synthetic data, no hardware
+                            or database -- runs anywhere.
+
+WattScope.Storage.Tests    xUnit against real SQLite files in a temp
+                            directory, synthetic data -- no hardware.
 
 WattScope.Hardware.Tests   xUnit, integration-style against the real WMI /
                             LibreHardwareMonitor / NVML backends on the host
                             machine. Requires Windows.
 ```
 
-Dependency direction is strictly one-way: `Probe -> Hardware -> Core`, and
-`Hardware.Tests -> Hardware -> Core`, `Core.Tests -> Core`. Nothing in `Core`
-references `Hardware`.
+Dependency direction is strictly one-way: `Probe -> {Hardware, Storage} ->
+Core`. `Hardware` and `Storage` do not reference each other. Nothing in
+`Core` references `Hardware` or `Storage`.
 
 ## Why the split
 
@@ -85,6 +101,40 @@ re-enumerated mid-session. Each tick is printed live; if `--export` was
 given, ticks are buffered in memory and written as one `ExportReport` at the
 end of the run (or on Ctrl+C).
 
+`--monitor` is unchanged by Milestone 002 and remains the diagnostic path:
+it never touches the database.
+
+## Data flow (`--record`, Milestone 002)
+
+```
+DiscoveryService.Discover()  (once)
+        |
+        v
+PowerSampleBuilder  <-- binds CpuPackage / GpuBoard channels to the
+        |               classifier's *selected* sensors, once per session
+        |
+SamplingEngine.RunAsync()  -- per tick: readings + UTC + monotonic time
+        |
+        v
+PowerSampleBuilder.Build(tick) -> PowerSample (2 validated channels only)
+        |
+        v
+EnergyMonitor.OnSample()                         OS suspend/resume
+  EnergyIntegrator  -> verified PowerInterval | MonitoringGap   <-- SystemEvents
+  EnergyAccumulator -> 15-min bucket deltas (measured + estimated)
+  batch: samples, bucket deltas, gaps, availability changes
+        |  every 10 s, one transaction
+        v
+IEnergyStore (SqliteEnergyStore)
+        |
+        v
+EnergyReportBuilder + CostCalculator (read side: --summary, --sessions)
+```
+
+Hardware is still enumerated exactly once; the full sensor list is read
+each tick (that is how the providers refresh) but only the bound sensors'
+values leave `PowerSampleBuilder`.
+
 ## Provider notes
 
 - **LibreHardwareMonitorProvider** wraps a single `LibreHardwareMonitor.Hardware.Computer`,
@@ -115,7 +165,10 @@ is recorded as a per-machine observation, not a universal rule -- see
 `docs/SENSOR_CONTRACT.md` section 4.
 
 Current state: the Probe CLI runs at whatever privilege level it was
-launched with. Planned (future milestone, not implemented): the desktop UI
+launched with. Since Milestone 002, a 0 W CPU package reading (the
+non-elevated symptom on this machine) is rejected as `ImplausibleZero`
+rather than integrated, so an unelevated run yields a *partial* wall
+estimate and no cost -- never a silently low one. Planned (future milestone, not implemented): the desktop UI
 and the energy/cost engine stay unelevated; privileged sensor reads move
 into a minimal, separately-installed elevated component (e.g. a Windows
 service) that exposes only selected readings over local, ACL-restricted IPC.

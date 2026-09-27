@@ -7,3 +7,5 @@ obj/
 *-report.json
 *-discovery.json
 long-run-console.log
+
+TestResults/

@@ -106,6 +106,45 @@ public class SamplingEngineTests
     }
 
     [Fact]
+    public async Task AfterAStall_DoesNotBurstCatchUpTicks()
+    {
+        // A 200 ms stall with a 20 ms interval used to make the engine fire ~10
+        // back-to-back ticks to "catch up" (the same happens after sleep/resume).
+        var callCount = 0;
+        var provider = new FakeSensorProvider("Stall", readingsFactory: () =>
+        {
+            if (++callCount == 2)
+                Thread.Sleep(200);
+            return [Reading("Stall", 1.0)];
+        });
+        var engine = new SamplingEngine([provider]);
+
+        var options = new SamplingOptions { Interval = TimeSpan.FromMilliseconds(20), Duration = TimeSpan.FromMilliseconds(400) };
+        var ticks = new List<SamplingTick>();
+        await foreach (var tick in engine.RunAsync(options))
+            ticks.Add(tick);
+
+        var spacings = ticks.Zip(ticks.Skip(1), (a, b) => (b.MonotonicTime - a.MonotonicTime).TotalMilliseconds).ToList();
+        Assert.All(spacings, s => Assert.True(s >= 10, $"Tick spacing {s:F1} ms indicates a catch-up burst."));
+        Assert.Contains(ticks, t => t.GapDetected);
+    }
+
+    [Fact]
+    public async Task Ticks_CarryMonotonicTime_AndReadDuration()
+    {
+        var provider = new FakeSensorProvider("Fake", readingsFactory: () => { Thread.Sleep(5); return [Reading("Fake", 1.0)]; });
+        var engine = new SamplingEngine([provider]);
+
+        var ticks = new List<SamplingTick>();
+        await foreach (var tick in engine.RunAsync(new SamplingOptions { Interval = TimeSpan.FromMilliseconds(30), Duration = TimeSpan.FromMilliseconds(100) }))
+            ticks.Add(tick);
+
+        Assert.True(ticks.Count >= 2);
+        Assert.All(ticks.Zip(ticks.Skip(1)), p => Assert.True(p.Second.MonotonicTime > p.First.MonotonicTime));
+        Assert.All(ticks, t => Assert.True(t.ReadDuration >= TimeSpan.FromMilliseconds(4)));
+    }
+
+    [Fact]
     public async Task NeverCallsProviderConcurrently_TicksAreStrictlySequential()
     {
         var inFlight = 0;

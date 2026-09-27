@@ -1,13 +1,15 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\WattScope.Core\WattScope.Core.csproj" />
     <ProjectReference Include="..\WattScope.Hardware\WattScope.Hardware.csproj" />
+    <ProjectReference Include="..\WattScope.Storage\WattScope.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.12" />
   </ItemGroup>
 
   <PropertyGroup>

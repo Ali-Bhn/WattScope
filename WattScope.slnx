@@ -3,9 +3,11 @@
     <Project Path="src/WattScope.Core/WattScope.Core.csproj" />
     <Project Path="src/WattScope.Hardware/WattScope.Hardware.csproj" />
     <Project Path="src/WattScope.Probe/WattScope.Probe.csproj" />
+    <Project Path="src/WattScope.Storage/WattScope.Storage.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WattScope.Core.Tests/WattScope.Core.Tests.csproj" />
     <Project Path="tests/WattScope.Hardware.Tests/WattScope.Hardware.Tests.csproj" />
+    <Project Path="tests/WattScope.Storage.Tests/WattScope.Storage.Tests.csproj" />
   </Folder>
 </Solution>

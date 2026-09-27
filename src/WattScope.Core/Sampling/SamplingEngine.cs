@@ -39,10 +39,11 @@ public sealed class SamplingEngine
             var tickStart = stopwatch.Elapsed;
             var gapDetected = false;
             TimeSpan? gapDuration = null;
+            var lateness = TimeSpan.Zero;
 
             if (sequence > 0)
             {
-                var lateness = tickStart - nextDue;
+                lateness = tickStart - nextDue;
                 if (lateness > options.Interval * (options.GapDetectionFactor - 1.0))
                 {
                     gapDetected = true;
@@ -55,6 +56,7 @@ public sealed class SamplingEngine
             var readings = new List<SensorReading>();
             var errors = new List<DiagnosticMessage>();
             var timestamp = DateTimeOffset.UtcNow;
+            var monotonicTimestamp = Stopwatch.GetTimestamp();
 
             foreach (var provider in _providers)
             {
@@ -79,6 +81,8 @@ public sealed class SamplingEngine
             {
                 Sequence = sequence,
                 Timestamp = timestamp,
+                MonotonicTime = Stopwatch.GetElapsedTime(0, monotonicTimestamp),
+                ReadDuration = Stopwatch.GetElapsedTime(monotonicTimestamp),
                 Readings = readings,
                 Errors = errors,
                 GapDetected = gapDetected,
@@ -86,7 +90,11 @@ public sealed class SamplingEngine
             };
 
             sequence++;
-            nextDue = options.Interval * sequence;
+            // Stay on the fixed schedule (no drift), except when this tick was
+            // already late by more than a whole interval (stall, sleep/resume):
+            // then re-anchor on this tick instead of firing a burst of
+            // back-to-back catch-up ticks for every missed slot.
+            nextDue = lateness > options.Interval ? tickStart + options.Interval : nextDue + options.Interval;
             var remaining = nextDue - stopwatch.Elapsed;
 
             if (remaining > TimeSpan.Zero)

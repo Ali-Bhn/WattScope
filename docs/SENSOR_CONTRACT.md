@@ -265,6 +265,10 @@ unelevated. Requirements for that component (not implemented yet):
   data to the selected power sensors, or streaming ticks to disk instead
   of buffering, are candidates for a later milestone -- neither is
   implemented here, to avoid speculative work beyond this milestone's scope.
+  *Milestone 002 update:* continuous monitoring now goes through
+  `--record`, which persists only the two selected energy channels to
+  SQLite (~26 bytes/sample; see `docs/STORAGE.md`). `--monitor --export`
+  is intentionally unchanged and remains a diagnostic tool.
 
 ## 6. Exported data
 

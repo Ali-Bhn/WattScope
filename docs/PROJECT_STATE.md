@@ -1,7 +1,91 @@
 # Project State
 
-Last updated: 2026-09-27, after implementing and validating Milestone 001
-and recording the manually-run elevated comparison.
+Last updated: 2026-09-27, after implementing and validating Milestone 002.
+
+## Status
+
+- **Milestone 001** -- complete (details below, unchanged).
+- **Milestone 002** -- Energy Calculation, Electricity Cost & Persistent
+  Storage: implemented and validated, with the limitations listed in the
+  next section. Milestone 003 not started.
+
+# Milestone 002
+
+Rules: `docs/ENERGY_MODEL.md`. Database: `docs/STORAGE.md`.
+
+## What was verified, and how
+
+| Requirement | Verification |
+|---|---|
+| Integration: constant/variable power, irregular spacing, actual elapsed time | Automated (`EnergyIntegratorTests`), synthetic data with analytic answers; also `--selftest` |
+| Missing / invalid readings, duplicate timestamps, long gaps, sleep (clock discontinuity), time going backwards | Automated (`EnergyIntegratorTests`, `PowerSampleBuilderTests`) |
+| Sleep/resume via OS notification, flush on suspend | Automated with the monitor (`EnergyMonitorTests`); **the real `SystemEvents` suspend/resume path was not exercised** (see limitations) |
+| Duplicate power sensor prevention | Automated, using the real classifier with the dev machine's elevated reading set: CPU = 45.40 W (not + 44.14 W Cores), GPU = 43.01 W once (NVML, not + LHM GPU Package); multi-GPU ambiguity, multi-socket sum |
+| Estimation completeness, assumptions, validation | Automated (`WallPowerEstimatorTests`) |
+| Cost: decimal, rounding, round-once, pricing changes, unpriced energy, daily/monthly incl. DST day | Automated (`CostCalculatorTests`, `EnergyReportTests`) |
+| Migrations, persistence round-trip, transactions (atomic batch), recovery, resume, retention, price/settings persistence, lock | Automated against real SQLite files (`WattScope.Storage.Tests`) |
+| Storage growth | Automated: 24 h at 1 Hz = **2.14 MB (~26 bytes/sample)** vs. ~46 MB per 10 min for the M001 JSON export |
+| Real hardware, 5-min `--record` (unelevated) | Run on the dev machine: 301 samples, 0 gaps, GPU 22.445 Wh measured (coverage 100 %), CPU rejected every tick as `ImplausibleZero` (0 W unelevated) -> estimate **Partial**, cost correctly "n/a" (lower-bound partial cost shown separately); crossed a bucket boundary (2 buckets); `--db-info` integrity ok; read back by separate processes (`--sessions`, `--summary --day`) |
+| Real unexpected termination | Dev machine: `--record` force-killed (`Stop-Process -Force`) after ~27 s. Next command recovered session as `Interrupted`, ending at its last flushed observation (18:05:02; kill at 18:05:07 -- the unflushed ~5 s are absent, not estimated). `--record --resume` recorded a 13 s gap and continued the same session (21 s + 14 s monitored) |
+| M001 backward compatibility | Real run: `--discover`, `--monitor --duration 3 --export` (valid JSON, 3 ticks), legacy `--discover --interval 500` all exit 0 |
+| CLI validation | `--selftest`: 29/29 checks pass (integration, pricing, persistence, crash recovery, resume, summaries) |
+| Full suite | `dotnet test WattScope.slnx`: **120/120 pass** (Core 92, Storage 17, Hardware 11) |
+
+### Performance (real 5-minute `--record`, 1 s interval, unelevated, dev machine)
+
+- Process CPU: 4.94 s over 5:01 = **1.64 % of one core** (0.05 % of 32 logical CPUs).
+- Memory: working set 98 MiB, peak 102 MiB, managed heap 7 MiB. Memory is
+  bounded: pending samples are flushed every 10 s (cap 3600 on store
+  failure), only open buckets are held, latency stats use a fixed histogram.
+- Sampling latency (reading all providers per tick): avg 90 ms, p95 140 ms,
+  max 1251 ms (the first ticks). This is LibreHardwareMonitor refreshing all
+  enabled hardware -- unchanged M001 behavior, not new M002 work.
+- Database flush: 29 flushes, avg 0.55 ms, max 6.6 ms.
+- Database: 72 KiB file after 301 samples (mostly fixed schema pages); at
+  scale ~26 bytes/sample (automated 24 h test).
+
+## Known limitations (Milestone 002)
+
+1. **Real OS sleep/wake was not exercised.** The `SystemEvents.PowerModeChanged`
+   hookup in `--record` is untested on real suspend (putting the dev machine
+   to sleep was not done in this session). Independently of it, any sleep is
+   caught by the integrator as a `SamplingStall` or `ClockDiscontinuity` gap,
+   so no energy can be fabricated across it -- only the gap *reason* would be
+   less specific. Whether `Stopwatch` (QPC) advances during sleep on this
+   machine was not measured; the design does not depend on it.
+2. **Graceful stop on console close / logoff / shutdown (`SIGHUP`/`SIGTERM`
+   handlers) was not exercised.** Ctrl+C and duration stops were. If the
+   close handler does not finish within Windows' time limit, the session is
+   recovered as `Interrupted` (≤ ~10 s of data lost, never fabricated).
+3. **CPU power without elevation**: on this machine CPU package reads 0 W
+   unelevated, so unelevated sessions produce only a partial (uncosted)
+   estimate. A complete, costed estimate needs an elevated process today
+   (not tested elevated in this session -- the developer's elevated run was
+   `--discover` only). A least-privilege sensor component is future work.
+4. The estimation defaults (50 W other components, 90 % PSU efficiency) are
+   placeholders, not measured for this machine. There is no wall-meter input.
+5. Price changes apply at 15-minute bucket granularity (bucket-start price).
+   Negative (dynamic-tariff) prices and multiple currencies are not supported.
+6. A session keeps the estimation settings it was created with, even when
+   resumed after settings change.
+7. Up to ~10 s of the most recent data is lost on a process crash (flush
+   interval); with `synchronous=NORMAL`, the most recent commits may also be
+   lost on an OS crash/power loss.
+8. Energy is sample-based: spikes shorter than the sampling interval are not
+   captured. The trapezoid is exact only for linear change between samples.
+9. A single missing reading removes both adjacent intervals from that
+   channel's energy (by design: no interpolation across unverified
+   readings), so coverage can drop faster than the number of missing samples.
+10. Sampling reads the full sensor set each tick (~90 ms/tick here) even
+    though only two channels are used. Restricting refresh to the bound
+    hardware would cut CPU cost; not done (would change M001 provider behavior).
+11. Raw samples are pruned at `--record` start, hourly during recording and
+    on `--retention`; there is no background service, so nothing is pruned
+    while WattScope is not running.
+12. `WattScope.Probe` itself has no automated tests for argument parsing;
+    it was exercised manually (above) and via `--selftest`.
+
+# Milestone 001 (retained record)
 
 ## Status: Milestone 001 implemented and validated (see caveats below)
 
@@ -141,14 +225,15 @@ did, per the brief's "do not falsely claim runtime validation" instruction:
 - Design a least-privilege sensor component so the future desktop UI never
   has to run elevated to get CPU power (see `docs/ARCHITECTURE.md`,
   "Privilege model").
-- Consider (Milestone 002+, not now): an export mode that only includes
-  selected power sensors per tick, or streams ticks to disk, to keep long
-  `--monitor --export` sessions practical (see 46 MB finding above).
+- ~~Consider an export mode that only includes selected power sensors~~ --
+  addressed in Milestone 002 by `--record` + SQLite (`docs/STORAGE.md`);
+  `--monitor --export` intentionally unchanged as a diagnostic tool.
 - Consider validating the CPU/GPU name-mapping table against AMD hardware
   when such a machine is available.
 
 ## Explicitly not implemented in this milestone (by design, per the brief)
 
 Desktop UI, SQLite persistence, cost calculator, gaming-session analytics,
-background/startup behavior, localization. These are scoped to later
-milestones.
+background/startup behavior, localization. (SQLite persistence and the cost
+calculator have since been delivered by Milestone 002; the rest remain
+future work.)
