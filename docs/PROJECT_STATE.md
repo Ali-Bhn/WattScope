@@ -1,6 +1,7 @@
 # Project State
 
-Last updated: 2026-09-27, after implementing and validating Milestone 001.
+Last updated: 2026-09-27, after implementing and validating Milestone 001
+and recording the manually-run elevated comparison.
 
 ## Status: Milestone 001 implemented and validated (see caveats below)
 
@@ -13,10 +14,9 @@ Last updated: 2026-09-27, after implementing and validating Milestone 001.
    and storage devices via WMI, independent of sensor availability.
 3. **Available power sensors can be read.** ✅ Verified: GPU board power reads
    correctly from both LibreHardwareMonitor and NVML, tracking real load
-   changes. CPU package/core power sensors exist but read `0.0 W` in this
-   non-elevated session -- see "Known limitations" below; this is a
-   documented elevation limitation, not a read failure (`Availability ==
-   Available`, not `NullValue`/`UpdateFailed`).
+   changes. CPU package/core power read `0.0 W` non-elevated and real values
+   (45.40 W / 44.14 W) when the developer ran `--discover` elevated -- see
+   "Elevated-vs-non-elevated comparison" below.
 4. **Missing sensors are handled safely.** ✅ Verified via automated tests
    (`SensorAvailability` covers Null/NaN/Infinite/UpdateFailed/
    DeviceDisconnected; `PowerSensorClassifierTests.UnavailableReading_...`)
@@ -50,19 +50,24 @@ Last updated: 2026-09-27, after implementing and validating Milestone 001.
    ("Explicit known limitations").
 10. **`PROJECT_STATE.md` reflects the actual implementation status.** ✅ This document.
 
+## Elevated-vs-non-elevated comparison (brief Section 12) -- completed manually
+
+Could not be run from the automated session (no interactive UAC consent).
+Subsequently run **manually by the developer** from an elevated prompt on
+the development machine. Reported results: Elevated=True; LHM and NVML both
+available; 264 sensors discovered (vs. 159 unelevated); 6 power sensors;
+CPU Package 45.40 W, CPU Cores 44.14 W (vs. flat 0.0 W unelevated), GPU
+Package (LHM) 43.01 W, GPU Board Power (NVML) 43.01 W. Selected: CPU Package
+from LibreHardwareMonitor, GPU board power from NVML. No double counting:
+CPU Cores is not added to CPU Package, LHM GPU Package is not added to NVML
+GPU Board Power. Full table and the narrowly-stated conclusion (elevation is
+associated with working CPU power *on this machine*; not claimed universal)
+in `docs/SENSOR_CONTRACT.md` section 4. The requirement for a future
+least-privilege sensor component (so the desktop UI never runs elevated) is
+recorded there and in `docs/ARCHITECTURE.md` ("Privilege model").
+
 ## Explicitly unverified (brief Section 15: "mark as unverified if it can't be verified")
 
-- **Elevated-vs-non-elevated comparison (brief Section 12).** The intended
-  approach -- a one-off Windows Scheduled Task with `RunLevel=Highest`,
-  which Windows can run for an administrator account without an interactive
-  UAC prompt -- was blocked by this session's own tooling policy
-  ("Unauthorized Persistence"), and no interactive UAC consent is available
-  in this non-interactive session. **Not attempted via any other elevation
-  method** (this was treated as a hard stop, not something to route around).
-  To get a real comparison: run `WattScope.Probe.exe --discover` from an
-  elevated ("Run as Administrator") prompt and compare `CpuPackage`/
-  `CpuCores` against the non-elevated values recorded in
-  `docs/SENSOR_CONTRACT.md`.
 - **AMD/Intel-iGPU/multi-GPU code paths.** The classifier's multi-GPU
   ambiguity handling and the CPU name-mapping table are covered by unit
   tests with synthetic data, but were never exercised against real AMD CPU
@@ -80,9 +85,9 @@ Last updated: 2026-09-27, after implementing and validating Milestone 001.
   10-minute run: ranged roughly 42-58 W depending on system activity.
 - CPU package/core power reads a flat `0.0 W` for the entire session, every
   single tick (confirmed across 600 ticks, ruling out a RAPL first-read
-  cold-start artifact) -- attributed to running without administrator
-  privileges (LibreHardwareMonitor's Intel RAPL/MSR path needs its WinRing0
-  kernel driver, which needs elevation to load).
+  cold-start artifact) in the non-elevated process; an elevated run on the
+  same machine read 45.40 W package / 44.14 W cores, so elevation is
+  associated with working CPU power here.
 - No `GPU Chip Power` sensor exists on this GPU/driver combination -- only
   board-level power is exposed.
 - A real, unattended `--monitor --export` run for the full 10 minutes
@@ -133,8 +138,9 @@ did, per the brief's "do not falsely claim runtime validation" instruction:
 
 ## Outstanding issues / next actions
 
-- Get a real elevated-vs-non-elevated comparison run by the user (see
-  "Explicitly unverified" above) and record the result here.
+- Design a least-privilege sensor component so the future desktop UI never
+  has to run elevated to get CPU power (see `docs/ARCHITECTURE.md`,
+  "Privilege model").
 - Consider (Milestone 002+, not now): an export mode that only includes
   selected power sensors per tick, or streams ticks to disk, to keep long
   `--monitor --export` sessions practical (see 46 MB finding above).

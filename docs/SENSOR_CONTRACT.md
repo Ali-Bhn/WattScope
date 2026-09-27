@@ -147,7 +147,8 @@ Windows 11 Pro, unelevated process:
   Values tracked real load changes tick-to-tick (observed range ~43-57 W
   during idle/light load over a 10+ minute unattended run).
 - **`CPU Package` and `CPU Cores` read a steady `0.0 W` for the entire
-  session (8s and 10-minute runs both), never varying.** This was verified
+  session (8s and 10-minute runs both), never varying, in the non-elevated
+  process.** (See "Elevated comparison" below for the elevated result.) This was verified
   to *not* be a first-read RAPL cold-start artifact (which would resolve
   itself after the first tick) -- it stayed at exactly 0.0 across hundreds of
   ticks. This machine's process was **not elevated**
@@ -157,23 +158,80 @@ Windows 11 Pro, unelevated process:
   sensors are still *created* (so they appear in `SensorInventory` as
   `Available` with `Value == 0.0`, not as `NullValue`) -- LibreHardwareMonitor
   itself does not distinguish "no driver access" from "genuinely zero" for
-  this sensor. **This is a known, documented limitation of the current
-  session, not a WattScope bug**; see Milestone 013 for whether the elevated
-  comparison this milestone's brief calls for should be re-attempted.
+  this sensor. **This is a known, documented limitation of the non-elevated
+  session, not a WattScope bug.**
 - **No `GPU Chip Power` sensor was found** on this GPU/driver combination --
   only board-level power is exposed. `GpuChip` has no selection on this
   machine; this is an accurate reflection of sensor availability, not a
   defect.
-- **Elevated-vs-non-elevated comparison (brief Section 12) could not be
-  completed in this automated session.** The intended approach (a one-off
-  Windows Scheduled Task with `RunLevel=Highest`, which Windows can execute
-  for an administrator account without an interactive UAC prompt) was
-  blocked by this session's own tooling policy as unauthorized persistence,
-  and no interactive UAC consent is available in a non-interactive session.
-  **This is explicitly marked unverified** rather than guessed at. To get a
-  real comparison, run `WattScope.Probe.exe --discover` from an elevated
-  (Run as Administrator) prompt and compare the `CpuPackage`/`CpuCores`
-  entries against the non-elevated run above.
+
+### Elevated comparison (brief Section 12) -- completed
+
+The elevated comparison could not be run from the original automated
+session (no interactive UAC consent available). It was subsequently run
+**manually by the developer** from an elevated prompt
+(`WattScope.Probe.exe --discover`) on the same machine (Intel Core
+i9-14900KF, NVIDIA GeForce RTX 5070 Ti, MSI PRO Z790-P WIFI). Reported
+results:
+
+| | Non-elevated | Elevated |
+|---|---|---|
+| `Elevated` | False | True |
+| LibreHardwareMonitor | Available | Available |
+| NVML | Available | Available |
+| Total discovered sensors | 159 | 264 |
+| `CPU Package` (LHM) | 0.0 W (flat, every tick) | **45.40 W** |
+| `CPU Cores` (LHM) | 0.0 W (flat, every tick) | **44.14 W** |
+| `GPU Package` (LHM, role `GpuBoard`) | tracked load | 43.01 W |
+| `GPU Board Power` (NVML, role `GpuBoard`) | tracked load | 43.01 W |
+| Power sensors discovered | -- | 6 |
+| Selected `CpuPackage` | LHM (reading 0.0 W) | LHM |
+| Selected `GpuBoard` | NVML | NVML |
+
+Conclusions, stated narrowly:
+
+- **On this machine, elevation is associated with real CPU package/core
+  power readings.** Non-elevated reads were a constant 0.0 W; elevated reads
+  are plausible non-zero values. This is consistent with (but does not by
+  itself prove) the explanation that LibreHardwareMonitor's RAPL/MSR access
+  path needs a kernel driver that only loads with administrator rights.
+- **This is not a claim that elevation is universally required.** Other
+  CPUs, other LibreHardwareMonitor versions, or other driver setups may
+  expose CPU power without elevation, or may not expose it even with it.
+  WattScope must continue to treat CPU power availability as a per-machine,
+  per-session runtime fact.
+- The larger elevated sensor count (264 vs. 159) means elevation unlocks
+  sensors beyond power (e.g. additional motherboard/SuperIO sensors); those
+  are not used for energy calculation.
+- **The precedence policy held under elevation:** `CPU Cores` (44.14 W) is
+  a subset of `CPU Package` (45.40 W) and is never added to it; LHM's
+  `GPU Package` and NVML's `GPU Board Power` report the same physical
+  quantity (both 43.01 W) and are never added together -- NVML is selected,
+  the LHM candidate is kept as an overlapping, unselected candidate.
+- **A 0.0 W CPU package reading from a non-elevated session is
+  indistinguishable, at the sensor level, from a genuine zero.**
+  LibreHardwareMonitor reports it as `Available`. Consumers (e.g. a future
+  power estimator) must therefore not treat a non-elevated CPU package
+  reading of exactly 0.0 W as trustworthy.
+
+### Future requirement: privileged sensor access without an elevated UI
+
+Running the whole desktop application as administrator to obtain CPU power
+is **not acceptable** for the future UI: it widens the attack surface of a
+large process (UI framework, web view, file dialogs) and forces a UAC prompt
+on every launch. A later milestone must provide a narrowly-scoped privileged
+component instead -- e.g. a minimal elevated Windows service or broker that
+only performs sensor reads and exposes selected readings over an
+authenticated, local-only IPC channel (named pipe with an ACL restricted to
+the interactive user), while the UI and the energy/cost engine remain
+unelevated. Requirements for that component (not implemented yet):
+
+- Least privilege: reads sensors only; no arbitrary command execution, file
+  access, or configuration of hardware.
+- Local-only, access-controlled IPC; no network listener.
+- Graceful degradation: if the privileged component is absent or refused,
+  the unelevated app keeps working with whatever sensors are readable, and
+  reports CPU power as unavailable rather than 0.
 
 ## 5. Explicit known limitations (Milestone 001 scope)
 

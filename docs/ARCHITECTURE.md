@@ -102,3 +102,22 @@ end of the run (or on Ctrl+C).
 
 See `docs/SENSOR_CONTRACT.md` for the full field-level contract and the
 power-sensor classification/precedence policy.
+
+## Privilege model
+
+WattScope never requires administrator rights; every component runs and
+degrades gracefully unelevated. Elevation only changes *which sensors are
+readable*. On the development machine (i9-14900KF, MSI PRO Z790-P WIFI) an
+elevated `--discover` produced real CPU package/core power (45.40 W /
+44.14 W) where the unelevated process read a flat 0.0 W, and discovered 264
+sensors instead of 159. GPU board power (NVML) is readable either way. This
+is recorded as a per-machine observation, not a universal rule -- see
+`docs/SENSOR_CONTRACT.md` section 4.
+
+Current state: the Probe CLI runs at whatever privilege level it was
+launched with. Planned (future milestone, not implemented): the desktop UI
+and the energy/cost engine stay unelevated; privileged sensor reads move
+into a minimal, separately-installed elevated component (e.g. a Windows
+service) that exposes only selected readings over local, ACL-restricted IPC.
+`ISensorProvider` is the seam for this -- an IPC-backed provider can replace
+the in-process LibreHardwareMonitor provider without changes to Core.
