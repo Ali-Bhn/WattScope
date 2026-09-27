@@ -1,13 +1,15 @@
 # Project State
 
-Last updated: 2026-09-27, after implementing and validating Milestone 002.
+Last updated: 2026-09-27, after implementing Milestone 002 and completing a
+real elevated end-to-end validation (recording, pricing, and cost).
 
 ## Status
 
 - **Milestone 001** -- complete (details below, unchanged).
 - **Milestone 002** -- Energy Calculation, Electricity Cost & Persistent
-  Storage: implemented and validated, with the limitations listed in the
-  next section. Milestone 003 not started.
+  Storage: implemented and validated, **including a real elevated
+  `--record` session with a correctly computed cost end to end**, with the
+  limitations listed in the next section. Milestone 003 not started.
 
 # Milestone 002
 
@@ -29,6 +31,7 @@ Rules: `docs/ENERGY_MODEL.md`. Database: `docs/STORAGE.md`.
 | Real unexpected termination | Dev machine: `--record` force-killed (`Stop-Process -Force`) after ~27 s. Next command recovered session as `Interrupted`, ending at its last flushed observation (18:05:02; kill at 18:05:07 -- the unflushed ~5 s are absent, not estimated). `--record --resume` recorded a 13 s gap and continued the same session (21 s + 14 s monitored) |
 | M001 backward compatibility | Real run: `--discover`, `--monitor --duration 3 --export` (valid JSON, 3 ticks), legacy `--discover --interval 500` all exit 0 |
 | CLI validation | `--selftest`: 29/29 checks pass (integration, pricing, persistence, crash recovery, resume, summaries) |
+| **Real hardware, `--record` elevated, full pipeline including cost** | Run by the developer, elevated, on the dev machine (Session #1, 2026-09-27 18:09:19-18:14:19 local): 00:04:58 monitored, 0 gaps, CPU package 7.487 Wh (coverage 100 %), GPU board 10.718 Wh (coverage 100 %), estimated wall 24.841 Wh, completeness **Complete**. Confirms elevation gives non-zero, valid CPU package power end-to-end through integration (matches the discovery-only elevated reading recorded in `docs/SENSOR_CONTRACT.md`: this session's implied average CPU power, 7.487 Wh / 4:58 ≈ 90 W, is plausible average load, not the earlier single-point 45.40 W reading). Historical pricing was then added and re-verified (see below) -- cost came out to 0.01 EUR (unrounded 0.0086944 EUR) at 0.35 EUR/kWh, matching manual calculation (24.841 Wh = 0.024841 kWh; 0.024841 kWh x 0.35 EUR/kWh = 0.00869435 EUR) to display precision. `--db-info` integrity check: ok, both before and after. |
 | Full suite | `dotnet test WattScope.slnx`: **120/120 pass** (Core 92, Storage 17, Hardware 11) |
 
 ### Performance (real 5-minute `--record`, 1 s interval, unelevated, dev machine)
@@ -59,13 +62,33 @@ Rules: `docs/ENERGY_MODEL.md`. Database: `docs/STORAGE.md`.
    recovered as `Interrupted` (≤ ~10 s of data lost, never fabricated).
 3. **CPU power without elevation**: on this machine CPU package reads 0 W
    unelevated, so unelevated sessions produce only a partial (uncosted)
-   estimate. A complete, costed estimate needs an elevated process today
-   (not tested elevated in this session -- the developer's elevated run was
-   `--discover` only). A least-privilege sensor component is future work.
+   estimate. A complete, costed estimate needs an elevated process --
+   **confirmed working** by a real elevated `--record` run (Session #1,
+   above): CPU package 7.487 Wh at 100 % coverage, completeness Complete,
+   cost computed correctly once priced. A least-privilege sensor component
+   so the desktop UI itself never needs to run elevated remains future work
+   (`docs/ARCHITECTURE.md`, "Privilege model").
 4. The estimation defaults (50 W other components, 90 % PSU efficiency) are
    placeholders, not measured for this machine. There is no wall-meter input.
 5. Price changes apply at 15-minute bucket granularity (bucket-start price).
-   Negative (dynamic-tariff) prices and multiple currencies are not supported.
+   Negative (dynamic-tariff) prices and multiple currencies are not
+   supported. **Observed in practice** during elevated validation: a price
+   set 24 seconds before a session started (`--set-price` with no
+   `--effective`, i.e. "now") did not price that session at all, because
+   the session's whole 5-minute run fell inside one 15-minute UTC bucket
+   (18:00-18:15 local) whose *start* preceded the price's effective time --
+   the documented rule ("a price that becomes effective mid-bucket applies
+   from the next bucket", `docs/ENERGY_MODEL.md` section 4) working exactly
+   as designed, not a defect, but a sharp edge for a user setting price
+   "just before" recording rather than well before the containing bucket
+   starts. Fixed for that data by adding a second price entry effective at
+   local midnight the same day (`--effective 2026-09-27T00:00:00`); the
+   original 18:08:55 entry was left in place (harmless: same price,
+   superseded for that bucket by the earlier entry, and the schedule keeps
+   both timestamps). **Candidate follow-up for a later milestone:** either
+   warn interactively when `--set-price`/`--record` start would leave the
+   current bucket unpriced, or price at finer-than-bucket granularity for
+   the bucket a price change falls into.
 6. A session keeps the estimation settings it was created with, even when
    resumed after settings change.
 7. Up to ~10 s of the most recent data is lost on a process crash (flush
