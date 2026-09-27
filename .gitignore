@@ -1,0 +1,9 @@
+bin/
+obj/
+*.user
+.vs/
+
+# Local validation artifacts produced by running WattScope.Probe manually
+*-report.json
+*-discovery.json
+long-run-console.log

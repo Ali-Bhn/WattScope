@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WattScope.Core/WattScope.Core.csproj" />
+    <Project Path="src/WattScope.Hardware/WattScope.Hardware.csproj" />
+    <Project Path="src/WattScope.Probe/WattScope.Probe.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WattScope.Core.Tests/WattScope.Core.Tests.csproj" />
+    <Project Path="tests/WattScope.Hardware.Tests/WattScope.Hardware.Tests.csproj" />
+  </Folder>
+</Solution>
