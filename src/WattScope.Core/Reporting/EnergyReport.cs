@@ -42,7 +42,9 @@ public static class EnergyReportBuilder
         IReadOnlyList<EnergyBucket> buckets,
         IReadOnlyList<MonitoringGap> gaps,
         ElectricityPriceSchedule prices,
-        IEnumerable<EstimationSettings> settingsUsed)
+        IEnumerable<EstimationSettings> settingsUsed,
+        IReadOnlyDictionary<(long SessionId, DateTimeOffset BucketStartUtc), IReadOnlyList<PricedEnergySegment>>? knownSplits = null,
+        Func<EnergyBucket, IReadOnlyList<PricedEnergySegment>?>? repriceBucket = null)
     {
         var totals = Sum(buckets);
 
@@ -69,13 +71,18 @@ public static class EnergyReportBuilder
             GapCount = gapCount,
             GapDuration = gapDuration,
             Completeness = CompletenessOf(totals),
-            Cost = CostCalculator.ForBuckets(buckets, prices),
+            Cost = CostCalculator.ForBuckets(buckets, prices, knownSplits, repriceBucket),
             Assumptions = assumptions
         };
     }
 
     /// <summary>Groups buckets by the local calendar date of their start in <paramref name="timeZone"/>.</summary>
-    public static IReadOnlyList<DailyEnergy> DailyBreakdown(IReadOnlyList<EnergyBucket> buckets, TimeZoneInfo timeZone, ElectricityPriceSchedule prices) =>
+    public static IReadOnlyList<DailyEnergy> DailyBreakdown(
+        IReadOnlyList<EnergyBucket> buckets,
+        TimeZoneInfo timeZone,
+        ElectricityPriceSchedule prices,
+        IReadOnlyDictionary<(long SessionId, DateTimeOffset BucketStartUtc), IReadOnlyList<PricedEnergySegment>>? knownSplits = null,
+        Func<EnergyBucket, IReadOnlyList<PricedEnergySegment>?>? repriceBucket = null) =>
         buckets
             .GroupBy(b => ReportPeriods.LocalDate(b.BucketStartUtc, timeZone))
             .OrderBy(g => g.Key)
@@ -83,7 +90,7 @@ public static class EnergyReportBuilder
             {
                 LocalDate = g.Key,
                 Totals = Sum(g),
-                Cost = CostCalculator.ForBuckets(g, prices)
+                Cost = CostCalculator.ForBuckets(g, prices, knownSplits, repriceBucket)
             })
             .ToList();
 

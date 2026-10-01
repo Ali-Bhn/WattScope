@@ -21,6 +21,7 @@ public sealed record StorageStatistics
     public required long Sessions { get; init; }
     public required long PowerSamples { get; init; }
     public required long EnergyBuckets { get; init; }
+    public required long PriceSplitRows { get; init; }
     public required long Gaps { get; init; }
     public required long AvailabilityRows { get; init; }
     public required long Prices { get; init; }
@@ -41,6 +42,12 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
 {
     public const int DefaultRawRetentionDays = 7;
     private const string RawRetentionKey = "raw_retention_days";
+
+    /// <summary>Stored in place of NULL for an unpriced price-split segment; WITHOUT ROWID primary key columns cannot be NULL.</summary>
+    private const long UnpricedSentinel = -1;
+
+    /// <summary>In-memory equivalent of <see cref="UnpricedSentinel"/> for dictionaries keyed by price time (real price effective times are never this old).</summary>
+    private static readonly DateTimeOffset UnpricedSentinelKey = DateTimeOffset.MinValue;
 
     private readonly SqliteConnection _connection;
     private readonly ILogger? _logger;
@@ -374,6 +381,39 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
             }
         }
 
+        if (batch.PriceSplits.Count > 0)
+        {
+            using var command = Command(transaction, """
+                INSERT INTO bucket_price_split (session_id, bucket_start_utc_s, price_effective_utc_ms, complete_j, complete_s, partial_j, partial_s)
+                VALUES ($s, $b, $p, $cj, $cs, $pj, $ps)
+                ON CONFLICT (session_id, bucket_start_utc_s, price_effective_utc_ms) DO UPDATE SET
+                    complete_j = complete_j + excluded.complete_j,
+                    complete_s = complete_s + excluded.complete_s,
+                    partial_j  = partial_j  + excluded.partial_j,
+                    partial_s  = partial_s  + excluded.partial_s;
+                """);
+            var p = command.Parameters;
+            p.AddWithValue("$s", batch.SessionId);
+            var b = p.Add("$b", SqliteType.Integer);
+            var price = p.Add("$p", SqliteType.Integer);
+            var cj = p.Add("$cj", SqliteType.Real);
+            var cs = p.Add("$cs", SqliteType.Real);
+            var pj = p.Add("$pj", SqliteType.Real);
+            var ps = p.Add("$ps", SqliteType.Real);
+            foreach (var segment in batch.PriceSplits)
+            {
+                if (segment.SessionId != batch.SessionId)
+                    throw new ArgumentException("All price splits in a batch must belong to the batch's session.", nameof(batch));
+                b.Value = segment.BucketStartUtc.ToUnixTimeSeconds();
+                price.Value = segment.PriceEffectiveUtc?.ToUnixTimeMilliseconds() ?? UnpricedSentinel;
+                cj.Value = segment.Totals.EstimatedCompleteJoules;
+                cs.Value = segment.Totals.EstimatedCompleteSeconds;
+                pj.Value = segment.Totals.EstimatedPartialJoules;
+                ps.Value = segment.Totals.EstimatedPartialSeconds;
+                command.ExecuteNonQuery();
+            }
+        }
+
         foreach (var gap in batch.Gaps)
         {
             using var command = Command(transaction, """
@@ -464,6 +504,177 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
                     EstimatedPartialSeconds = reader.GetDouble(10)
                 }
             });
+        }
+        return result;
+    }
+
+    /// <summary>Live-recorded price splits for one session, keyed by (session, bucket start). Empty for a bucket priced by a single entry throughout (the common case).</summary>
+    public IReadOnlyDictionary<(long SessionId, DateTimeOffset BucketStartUtc), IReadOnlyList<PricedEnergySegment>> GetPriceSplits(long sessionId) =>
+        QueryPriceSplits("WHERE session_id = $s", c => c.Parameters.AddWithValue("$s", sessionId));
+
+    /// <summary>Live-recorded price splits for every bucket starting in [fromUtc, toUtc), across sessions.</summary>
+    public IReadOnlyDictionary<(long SessionId, DateTimeOffset BucketStartUtc), IReadOnlyList<PricedEnergySegment>> GetPriceSplits(DateTimeOffset fromUtc, DateTimeOffset toUtc) =>
+        QueryPriceSplits("WHERE bucket_start_utc_s >= $from AND bucket_start_utc_s < $to", c =>
+        {
+            c.Parameters.AddWithValue("$from", fromUtc.ToUnixTimeSeconds());
+            c.Parameters.AddWithValue("$to", toUtc.ToUnixTimeSeconds());
+        });
+
+    private IReadOnlyDictionary<(long SessionId, DateTimeOffset BucketStartUtc), IReadOnlyList<PricedEnergySegment>> QueryPriceSplits(string where, Action<SqliteCommand> bind)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT session_id, bucket_start_utc_s, price_effective_utc_ms, complete_j, complete_s, partial_j, partial_s
+            FROM bucket_price_split {where} ORDER BY session_id, bucket_start_utc_s, price_effective_utc_ms;
+            """;
+        bind(command);
+        using var reader = command.ExecuteReader();
+        var byBucket = new Dictionary<(long, DateTimeOffset), List<PricedEnergySegment>>();
+        while (reader.Read())
+        {
+            var sessionId = reader.GetInt64(0);
+            var bucketStart = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(1));
+            var priceMs = reader.GetInt64(2);
+            var key = (sessionId, bucketStart);
+            if (!byBucket.TryGetValue(key, out var list))
+                byBucket[key] = list = [];
+            list.Add(new PricedEnergySegment
+            {
+                SessionId = sessionId,
+                BucketStartUtc = bucketStart,
+                PriceEffectiveUtc = priceMs == UnpricedSentinel ? null : FromMs(priceMs),
+                Totals = new EnergyTotals
+                {
+                    EstimatedCompleteJoules = reader.GetDouble(3),
+                    EstimatedCompleteSeconds = reader.GetDouble(4),
+                    EstimatedPartialJoules = reader.GetDouble(5),
+                    EstimatedPartialSeconds = reader.GetDouble(6)
+                }
+            });
+        }
+        return byBucket.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<PricedEnergySegment>)kv.Value);
+    }
+
+    /// <summary>
+    /// Attempts an exact replay of one bucket's price allocation from raw
+    /// <c>power_sample</c> rows -- only meaningful for a bucket with no live
+    /// split tracking whose *current* price schedule shows a price change
+    /// falling inside it (i.e. a price added retroactively after the bucket
+    /// was already persisted; see docs/ENERGY_MODEL.md section 4 and
+    /// <see cref="Pricing.CostCalculator.AllocateBucket"/>). Returns null if
+    /// the raw samples needed to bracket the bucket exactly are no longer
+    /// available (pruned past retention) or don't fully account for the
+    /// bucket's already-persisted monitored time -- callers must then fall
+    /// back to an explicitly approximate allocation rather than trust a
+    /// partial replay.
+    /// </summary>
+    public IReadOnlyList<PricedEnergySegment>? TryRepriceBucket(EnergyBucket bucket, ElectricityPriceSchedule schedule, EstimationSettings estimation)
+    {
+        var bucketEnd = bucket.BucketStartUtc + EnergyBuckets.DefaultBucketSize;
+        var startMs = bucket.BucketStartUtc.ToUnixTimeMilliseconds();
+        var endMs = bucketEnd.ToUnixTimeMilliseconds();
+
+        var boundStartMs = NearestSampleMs(bucket.SessionId, startMs, before: true);
+        var boundEndMs = NearestSampleMs(bucket.SessionId, endMs, before: false);
+        if (boundStartMs is null || boundEndMs is null)
+            return null; // raw data doesn't bracket this bucket on at least one side -- can't replay exactly
+
+        var samples = GetSamples(bucket.SessionId, FromMs(boundStartMs.Value), FromMs(boundEndMs.Value));
+        if (samples.Count < 2)
+            return null;
+
+        var gaps = GetSessionGaps(bucket.SessionId);
+        var segments = new Dictionary<DateTimeOffset, EnergyTotals>();
+        double coveredSeconds = 0;
+
+        for (var i = 0; i < samples.Count - 1; i++)
+        {
+            var s0 = samples[i];
+            var s1 = samples[i + 1];
+            if (gaps.Any(g => g.StartUtc < s1.UtcTime && g.EndUtc > s0.UtcTime))
+                continue; // a recorded gap covers (part of) this span -- never bridge it, same rule as live integration
+
+            var interval = new PowerInterval
+            {
+                StartUtc = s0.UtcTime,
+                EndUtc = s1.UtcTime,
+                Seconds = (s1.UtcTime - s0.UtcTime).TotalSeconds,
+                CpuPackage = Linear(s0.CpuPackageState, s0.CpuPackageWatts, s1.CpuPackageState, s1.CpuPackageWatts),
+                GpuBoard = Linear(s0.GpuBoardState, s0.GpuBoardWatts, s1.GpuBoardState, s1.GpuBoardWatts)
+            };
+
+            var boundaries = new[] { bucket.BucketStartUtc, bucketEnd }
+                .Where(t => t > interval.StartUtc && t < interval.EndUtc)
+                .Concat(schedule.Entries.Select(p => p.EffectiveFromUtc).Where(t => t > interval.StartUtc && t < interval.EndUtc));
+
+            foreach (var piece in interval.SplitAt(boundaries))
+            {
+                if (piece.StartUtc < bucket.BucketStartUtc || piece.EndUtc > bucketEnd)
+                    continue; // outside this bucket's window (the bracketing samples reach slightly beyond it)
+
+                var totals = EnergyTotals.FromInterval(piece, estimation);
+                var priceKey = schedule.PriceAt(piece.StartUtc)?.EffectiveFromUtc ?? UnpricedSentinelKey;
+                segments[priceKey] = segments.TryGetValue(priceKey, out var existing) ? existing + totals : totals;
+                coveredSeconds += totals.MonitoredSeconds;
+            }
+        }
+
+        // Sanity gate: only trust the replay if it accounts for exactly the
+        // monitored time the live recording already measured for this
+        // bucket. If not -- e.g. a sample inside the bucket was itself
+        // pruned even though the bracketing ones survived -- refuse rather
+        // than emit a silently wrong split.
+        if (Math.Abs(coveredSeconds - bucket.Totals.MonitoredSeconds) > 0.001)
+            return null;
+
+        return segments.Select(kv => new PricedEnergySegment
+        {
+            SessionId = bucket.SessionId,
+            BucketStartUtc = bucket.BucketStartUtc,
+            PriceEffectiveUtc = kv.Key == UnpricedSentinelKey ? null : kv.Key,
+            Totals = kv.Value
+        }).ToList();
+    }
+
+    private static LinearPower? Linear(ReadingState s0, double? w0, ReadingState s1, double? w1) =>
+        s0 == ReadingState.Valid && s1 == ReadingState.Valid && w0 is not null && w1 is not null
+            ? new LinearPower(w0.Value, w1.Value)
+            : null;
+
+    /// <summary>The nearest raw sample's utc_ms at-or-before (or at-or-after) <paramref name="utcMs"/> for a session, or null if none exists (e.g. pruned).</summary>
+    private long? NearestSampleMs(long sessionId, long utcMs, bool before)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = before
+            ? "SELECT MAX(utc_ms) FROM power_sample WHERE session_id = $s AND utc_ms <= $t;"
+            : "SELECT MIN(utc_ms) FROM power_sample WHERE session_id = $s AND utc_ms >= $t;";
+        command.Parameters.AddWithValue("$s", sessionId);
+        command.Parameters.AddWithValue("$t", utcMs);
+        var value = command.ExecuteScalar();
+        return value is null or DBNull ? null : Convert.ToInt64(value);
+    }
+
+    /// <summary>Raw samples for one session within [fromUtc, toUtc] (inclusive both ends), for repricing replay. Empty once pruned past retention.</summary>
+    public IReadOnlyList<StoredPowerSample> GetSamples(long sessionId, DateTimeOffset fromUtc, DateTimeOffset toUtc)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            SELECT utc_ms, cpu_mw, cpu_state, gpu_mw, gpu_state FROM power_sample
+            WHERE session_id = $s AND utc_ms >= $from AND utc_ms <= $to ORDER BY utc_ms;
+            """;
+        command.Parameters.AddWithValue("$s", sessionId);
+        command.Parameters.AddWithValue("$from", fromUtc.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$to", toUtc.ToUnixTimeMilliseconds());
+        using var reader = command.ExecuteReader();
+        var result = new List<StoredPowerSample>();
+        while (reader.Read())
+        {
+            result.Add(new StoredPowerSample(
+                FromMs(reader.GetInt64(0)),
+                reader.IsDBNull(1) ? null : reader.GetInt64(1) / 1000.0,
+                (ReadingState)reader.GetInt32(2),
+                reader.IsDBNull(3) ? null : reader.GetInt64(3) / 1000.0,
+                (ReadingState)reader.GetInt32(4)));
         }
         return result;
     }
@@ -671,6 +882,7 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
             Sessions = Scalar<long>(_connection, "SELECT count(*) FROM session;"),
             PowerSamples = Scalar<long>(_connection, "SELECT count(*) FROM power_sample;"),
             EnergyBuckets = Scalar<long>(_connection, "SELECT count(*) FROM energy_bucket;"),
+            PriceSplitRows = Scalar<long>(_connection, "SELECT count(*) FROM bucket_price_split;"),
             Gaps = Scalar<long>(_connection, "SELECT count(*) FROM monitoring_gap;"),
             AvailabilityRows = Scalar<long>(_connection, "SELECT count(*) FROM sensor_availability;"),
             Prices = Scalar<long>(_connection, "SELECT count(*) FROM electricity_price;"),

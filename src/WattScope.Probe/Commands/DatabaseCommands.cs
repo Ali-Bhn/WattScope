@@ -1,4 +1,5 @@
 using System.Globalization;
+using WattScope.Core.Energy;
 using WattScope.Core.Estimation;
 using WattScope.Core.Monitoring;
 using WattScope.Core.Pricing;
@@ -85,14 +86,21 @@ public static class DatabaseCommands
         return 0;
     }
 
-    public static void PrintSession(SqliteEnergyStore store, MonitoringSession session, ElectricityPriceSchedule prices)
+    /// <summary>Builds the same <see cref="EnergyReport"/> both the text CLI and the JSON --serve protocol use for one session -- the only difference is what each does with it afterwards.</summary>
+    public static EnergyReport BuildSessionReport(SqliteEnergyStore store, MonitoringSession session, ElectricityPriceSchedule prices)
     {
         var end = session.EndedUtc ?? session.LastObservationUtc ?? session.StartedUtc;
-        var report = EnergyReportBuilder.Build(
+        return EnergyReportBuilder.Build(
             $"Session #{session.Id} ({session.Status}{(session.EndReason is { } r ? $": {r}" : "")})",
             session.StartedUtc, end,
-            store.GetSessionBuckets(session.Id), store.GetSessionGaps(session.Id), prices, [session.Estimation]);
-        EnergyConsoleReporter.PrintReport(report);
+            store.GetSessionBuckets(session.Id), store.GetSessionGaps(session.Id), prices, [session.Estimation],
+            store.GetPriceSplits(session.Id),
+            bucket => store.TryRepriceBucket(bucket, prices, session.Estimation));
+    }
+
+    public static void PrintSession(SqliteEnergyStore store, MonitoringSession session, ElectricityPriceSchedule prices)
+    {
+        EnergyConsoleReporter.PrintReport(BuildSessionReport(store, session, prices));
         Console.WriteLine();
         Console.WriteLine("  Sensors used:");
         foreach (var binding in session.Sensors)
@@ -101,18 +109,32 @@ public static class DatabaseCommands
             Console.WriteLine("    (none -- no CPU package or GPU board sensor was selectable)");
     }
 
-    private static void PrintPeriod(string title, DateTimeOffset start, DateTimeOffset end, SqliteEnergyStore store, ElectricityPriceSchedule prices, TimeZoneInfo tz, bool daily)
+    /// <summary>Builds the same period report (and, for a month, its daily breakdown) both the text CLI and the JSON --serve protocol use.</summary>
+    public static (EnergyReport Report, IReadOnlyList<DailyEnergy>? Daily) BuildPeriodReport(
+        string title, DateTimeOffset start, DateTimeOffset end, SqliteEnergyStore store, ElectricityPriceSchedule prices, TimeZoneInfo tz, bool daily)
     {
         var buckets = store.GetBuckets(start, end);
         var sessions = store.GetSessions(buckets.Select(b => b.SessionId));
-        var report = EnergyReportBuilder.Build(title, start, end, buckets, store.GetGaps(start, end), prices, sessions.Select(s => s.Estimation));
+        var estimationBySession = sessions.ToDictionary(s => s.Id, s => s.Estimation);
+        var knownSplits = store.GetPriceSplits(start, end);
+        IReadOnlyList<Core.Pricing.PricedEnergySegment>? Reprice(EnergyBucket bucket) =>
+            estimationBySession.TryGetValue(bucket.SessionId, out var estimation) ? store.TryRepriceBucket(bucket, prices, estimation) : null;
+
+        var report = EnergyReportBuilder.Build(title, start, end, buckets, store.GetGaps(start, end), prices, sessions.Select(s => s.Estimation), knownSplits, Reprice);
+        var dailyBreakdown = daily && buckets.Count > 0 ? EnergyReportBuilder.DailyBreakdown(buckets, tz, prices, knownSplits, Reprice) : null;
+        return (report, dailyBreakdown);
+    }
+
+    private static void PrintPeriod(string title, DateTimeOffset start, DateTimeOffset end, SqliteEnergyStore store, ElectricityPriceSchedule prices, TimeZoneInfo tz, bool daily)
+    {
+        var (report, dailyBreakdown) = BuildPeriodReport(title, start, end, store, prices, tz, daily);
         EnergyConsoleReporter.PrintReport(report);
-        if (daily && buckets.Count > 0)
+        if (dailyBreakdown is { Count: > 0 })
         {
             Console.WriteLine();
-            EnergyConsoleReporter.PrintDaily(EnergyReportBuilder.DailyBreakdown(buckets, tz, prices), prices.Currency);
+            EnergyConsoleReporter.PrintDaily(dailyBreakdown, prices.Currency);
         }
-        if (buckets.Count == 0)
+        if (report.Totals.MonitoredSeconds == 0)
             Console.WriteLine("  (no recorded energy in this period)");
     }
 
@@ -135,7 +157,7 @@ public static class DatabaseCommands
             return 1;
         }
         Console.WriteLine($"Saved: {price.PricePerKwh.ToString(Inv)} {price.Currency}/kWh effective from {EnergyConsoleReporter.Local(price.EffectiveFromUtc)} (local).");
-        Console.WriteLine("Energy is priced at 15-minute bucket granularity: each bucket uses the price in effect at its start.");
+        Console.WriteLine("Energy is priced at the effective time of consumption: a price change mid-session is split exactly from the real power curve, not rounded to a 15-minute bucket boundary.");
         return 0;
     }
 
@@ -218,6 +240,7 @@ public static class DatabaseCommands
         Console.WriteLine($"Sessions:            {stats.Sessions}");
         Console.WriteLine($"Raw samples:         {stats.PowerSamples}" + (stats.OldestSampleUtc is { } o ? $" ({EnergyConsoleReporter.Local(o)} -> {EnergyConsoleReporter.Local(stats.NewestSampleUtc!.Value)})" : ""));
         Console.WriteLine($"Energy buckets:      {stats.EnergyBuckets} (15 min each)");
+        Console.WriteLine($"Price-split rows:    {stats.PriceSplitRows} (one per bucket per price actually applied; more than one only where a price changed mid-bucket)");
         Console.WriteLine($"Gaps:                {stats.Gaps}");
         Console.WriteLine($"Availability rows:   {stats.AvailabilityRows}");
         Console.WriteLine($"Prices:              {stats.Prices}");

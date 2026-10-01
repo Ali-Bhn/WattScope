@@ -9,3 +9,10 @@ obj/
 long-run-console.log
 
 TestResults/
+
+# Desktop app (Tauri + React) -- generated/toolchain artifacts
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/binaries/
+desktop/src-tauri/gen/

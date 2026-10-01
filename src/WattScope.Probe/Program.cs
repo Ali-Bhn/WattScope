@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using WattScope.Core.Sampling;
 using WattScope.Core.Sensors;
 using WattScope.Hardware;
@@ -26,9 +28,17 @@ if (options.ShowHelp)
     return 0;
 }
 
-using var loggerFactory = LoggerFactory.Create(builder => builder
-    .AddSimpleConsole(o => { o.SingleLine = true; o.TimestampFormat = "HH:mm:ss "; })
-    .SetMinimumLevel(LogLevel.Warning));
+using var loggerFactory = LoggerFactory.Create(builder =>
+{
+    builder
+        .AddSimpleConsole(o => { o.SingleLine = true; o.TimestampFormat = "HH:mm:ss "; })
+        .SetMinimumLevel(LogLevel.Warning);
+    // All log output goes to stderr, never stdout -- --serve's stdout is a
+    // strict newline-delimited JSON protocol (see docs/ARCHITECTURE.md) that
+    // a stray log line would corrupt; every other command's stdout is
+    // human-readable text that a log line would just be noise in anyway.
+    builder.Services.Configure<ConsoleLoggerOptions>(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
+});
 
 if (options.Command == CliCommand.SelfTest)
     return SelfTestCommand.Run();
@@ -101,6 +111,12 @@ try
     {
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
         return await RecordCommand.RunAsync(snapshot, availableProviders, options, loggerFactory, version, cts.Token);
+    }
+
+    if (options.Command == CliCommand.Serve)
+    {
+        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
+        return await ServeCommand.RunAsync(snapshot, availableProviders, options, loggerFactory, version, cts.Token);
     }
 
     var samplingEngine = new SamplingEngine(availableProviders, loggerFactory.CreateLogger<SamplingEngine>());

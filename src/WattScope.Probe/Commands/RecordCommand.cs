@@ -52,7 +52,8 @@ public static class RecordCommand
         var interval = TimeSpan.FromMilliseconds(options.IntervalMilliseconds);
         var monitor = new EnergyMonitor(store,
             new EnergyMonitorOptions { Integration = IntegrationOptions.ForSamplingInterval(interval) },
-            logger: loggerFactory.CreateLogger<EnergyMonitor>());
+            logger: loggerFactory.CreateLogger<EnergyMonitor>(),
+            priceScheduleProvider: store.GetPriceSchedule);
 
         MonitoringSession session;
         try

@@ -8,6 +8,7 @@ public enum CliCommand
     Discover,
     Monitor,
     Record,
+    Serve,
     Sessions,
     Summary,
     SetPrice,
@@ -44,13 +45,14 @@ public sealed record CliOptions
     public int? RetentionDays { get; init; }
     public string? ParseError { get; init; }
 
-    public bool NeedsHardware => Command is CliCommand.Discover or CliCommand.Monitor or CliCommand.Record;
+    public bool NeedsHardware => Command is CliCommand.Discover or CliCommand.Monitor or CliCommand.Record or CliCommand.Serve;
 
     private static readonly Dictionary<string, CliCommand> CommandFlags = new()
     {
         ["--discover"] = CliCommand.Discover,
         ["--monitor"] = CliCommand.Monitor,
         ["--record"] = CliCommand.Record,
+        ["--serve"] = CliCommand.Serve,
         ["--sessions"] = CliCommand.Sessions,
         ["--summary"] = CliCommand.Summary,
         ["--set-price"] = CliCommand.SetPrice,
@@ -68,6 +70,8 @@ public sealed record CliOptions
         [CliCommand.Discover] = ["--export", "--interval", "--duration"],
         [CliCommand.Monitor] = ["--interval", "--duration", "--export"],
         [CliCommand.Record] = ["--interval", "--duration", "--db", "--resume", "--quiet"],
+        // --serve is the machine-readable counterpart of --record, for the desktop UI's sidecar; see docs/ARCHITECTURE.md.
+        [CliCommand.Serve] = ["--interval", "--db", "--resume"],
         [CliCommand.Sessions] = ["--db"],
         [CliCommand.Summary] = ["--db", "--session", "--day", "--month"],
         [CliCommand.SetPrice] = ["--db", "--effective", "--currency"],
@@ -254,6 +258,7 @@ public sealed record CliOptions
           WattScope.Probe.exe --discover [--export <path>]
           WattScope.Probe.exe --monitor [--interval <ms>] [--duration <seconds>] [--export <path>]
           WattScope.Probe.exe --record [--interval <ms>] [--duration <seconds>] [--resume [<id>]] [--quiet] [--db <path>]
+          WattScope.Probe.exe --serve [--interval <ms>] [--resume [<id>]] [--db <path>]
           WattScope.Probe.exe --sessions [--db <path>]
           WattScope.Probe.exe --summary [--session <id> | --day <yyyy-MM-dd> | --month <yyyy-MM>] [--db <path>]
           WattScope.Probe.exe --set-price <EUR/kWh> [--effective <date/time>] [--currency <code>] [--db <path>]
@@ -274,8 +279,13 @@ public sealed record CliOptions
           --record              Record a monitoring session into the database: integrates selected
                                 CPU package / GPU board power into energy, estimates wall energy,
                                 stores compact samples and 15-minute aggregates. Ctrl+C stops cleanly.
-          --resume [<id>]       With --record: continue a stopped/interrupted session (default: latest).
+          --resume [<id>]       With --record/--serve: continue a stopped/interrupted session (default: latest).
           --quiet               With --record: do not print a line per sample.
+          --serve               Like --record, but speaks newline-delimited JSON on stdin/stdout instead of
+                                text: one JSON line per sample on stdout, plus JSON request/response for
+                                reports and settings. Used by the desktop app's native sidecar; see
+                                docs/ARCHITECTURE.md. Never prints anything else to stdout; all logging goes
+                                to stderr.
           --sessions            List recent sessions with their energy totals.
           --summary             Energy and cost report. Default: the latest session.
           --set-price <price>   Add an electricity price (per kWh, '.' decimal separator). Applies from

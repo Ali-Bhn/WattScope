@@ -4,9 +4,10 @@ A Windows desktop application for monitoring computer energy consumption,
 estimating electricity costs, and analyzing gaming sessions.
 
 **Implemented so far:** Milestone 001 (hardware discovery and power-sensor
-validation) and Milestone 002 (energy calculation, electricity cost, SQLite
-persistence) -- see `docs/PROJECT_STATE.md`. There is no desktop UI or
-gaming analytics yet.
+validation), Milestone 002 (energy calculation, electricity cost, SQLite
+persistence), and Milestone 003 (sub-bucket electricity pricing and the
+first desktop application, `desktop/`) -- see `docs/PROJECT_STATE.md`.
+Gaming analytics is not implemented yet.
 
 ## Projects
 
@@ -20,7 +21,9 @@ gaming analytics yet.
   providers, WMI-based hardware inventory, discovery orchestration.
   Windows-only.
 - `src/WattScope.Probe` -- standalone CLI for exercising discovery and live
-  monitoring.
+  monitoring; also the executable the desktop app's sidecar runs (`--serve`).
+- `desktop/` -- the Tauri 2 + React + TypeScript + Tailwind desktop
+  application. See "Running the desktop app" below.
 - `tests/WattScope.Core.Tests` -- fully mocked / synthetic-data unit tests.
 - `tests/WattScope.Storage.Tests` -- tests against real temporary SQLite
   databases (no hardware).
@@ -37,6 +40,9 @@ policy, and real findings from a development machine,
 
 - Windows 10/11 x64
 - .NET 10 SDK
+- For the desktop app (`desktop/`): Node.js 20+, Rust (stable, MSVC
+  toolchain) via rustup, and the Tauri 2 prerequisites (WebView2, present by
+  default on current Windows 10/11)
 
 ## Build & test
 
@@ -69,3 +75,32 @@ not a universal rule. Without elevation, WattScope.Probe still runs
 correctly: a 0 W CPU package reading is rejected, and the wall-power
 estimate is reported as partial (and not costed) rather than silently low
 -- see `docs/SENSOR_CONTRACT.md` section 4 and `docs/ENERGY_MODEL.md`.
+
+## Running the desktop app
+
+The desktop app's native sidecar is `WattScope.Probe.exe` itself (`--serve`)
+-- Tauri does not build or bundle the .NET side automatically, so publish it
+first:
+
+```
+cd desktop
+npm install
+powershell -File scripts/publish-probe.ps1   # publishes the sidecar binary into src-tauri/binaries/
+
+npm run tauri dev                            # live-reloading dev build
+npm run tauri build                          # release installer, under src-tauri/target/release/bundle/
+```
+
+`scripts/publish-probe.ps1` must be re-run whenever `WattScope.Probe` or
+anything it depends on (`WattScope.Core`/`Hardware`/`Storage`) changes --
+Tauri bundles whatever binary is already sitting in `src-tauri/binaries/`,
+it does not invoke `dotnet` itself.
+
+The app is local-first: no cloud dependency, no accounts, no telemetry, no
+subscriptions. It runs the sidecar unelevated by default (GPU power works;
+CPU package power shows an explicit "unavailable, not elevated" state rather
+than a substituted zero on machines where it needs elevation -- see
+`docs/SENSOR_CONTRACT.md` section 4). Settings has an explicit "Restart
+monitor as administrator" action for a real Windows UAC prompt when complete
+CPU data is wanted; see `docs/ARCHITECTURE.md` ("Privilege model") for what
+that does and its documented limitation.

@@ -124,6 +124,31 @@ internal static class SchemaMigrations
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             ) WITHOUT ROWID;
+            """),
+
+        // Additive: energy_bucket and every Milestone 002 table/row are
+        // untouched. One row per (bucket, price) actually seen while
+        // recording -- one row for the common case of a single price
+        // throughout a bucket, more only when a price genuinely changed
+        // mid-bucket. Comparable in size to energy_bucket itself, not
+        // "kept indefinitely" in the sense of growing per-flush -- rows for
+        // the same (session, bucket, price) coalesce via upsert. See
+        // docs/ENERGY_MODEL.md section 4.
+        new(2, "Sub-bucket price allocation", """
+            CREATE TABLE bucket_price_split (
+                session_id             INTEGER NOT NULL REFERENCES session(id),
+                bucket_start_utc_s     INTEGER NOT NULL,
+                -- The price entry's effective_from, as UTC ms; -1 means this
+                -- segment's energy was consumed before any price existed
+                -- (unpriced -- NULL is avoided here because WITHOUT ROWID
+                -- primary key columns cannot be NULL).
+                price_effective_utc_ms INTEGER NOT NULL,
+                complete_j REAL NOT NULL,
+                complete_s REAL NOT NULL,
+                partial_j  REAL NOT NULL,
+                partial_s  REAL NOT NULL,
+                PRIMARY KEY (session_id, bucket_start_utc_s, price_effective_utc_ms)
+            ) WITHOUT ROWID;
             """)
     ];
 

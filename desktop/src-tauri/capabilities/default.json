@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities for WattScope's main window: only what is needed to run the local sidecar process.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/wattscope-probe",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    }
+  ]
+}

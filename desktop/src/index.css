@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-surface-0 text-ink-primary antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* Logical properties keep the whole layout mirroring correctly under
+   dir="rtl" (Persian), not just text direction -- Part H. Components in
+   this app should prefer ps-/pe-/ms-/me- (inline-start/end) utilities over
+   pl-/pr-/ml-/mr- wherever a value differs by side. */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-surface-3;
+  border-radius: 9999px;
+}
+
+.card {
+  @apply rounded-card border border-surface-border bg-surface-1 p-4 shadow-sm;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md border border-surface-border
+    bg-surface-2 px-3 py-1.5 text-sm font-medium text-ink-primary transition-colors
+    hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.btn-primary {
+  @apply border-transparent bg-accent-green text-surface-0 hover:brightness-110;
+}
+
+.input {
+  @apply rounded-md border border-surface-border bg-surface-2 px-3 py-1.5 text-sm text-ink-primary
+    placeholder:text-ink-muted focus:border-accent-blue focus:outline-none;
+}
+
+.label {
+  @apply text-xs font-medium uppercase tracking-wide text-ink-secondary;
+}

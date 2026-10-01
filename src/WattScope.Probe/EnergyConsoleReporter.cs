@@ -71,18 +71,34 @@ public static class EnergyConsoleReporter
             Console.WriteLine($"    Unpriced energy:     {Wh(cost.UnpricedJoules)} consumed before any price was configured (not priced at zero). Use --set-price with --effective.");
         if (cost.PartialEstimateCost is { } partial)
             Console.WriteLine($"    Partial estimate cost (lower bound, not included above): {partial.ToString("0.########", Inv)} {cost.Currency}");
+        if (cost.EstimatedCost is not null && cost.Precision != PriceAllocationPrecision.Exact)
+            Console.WriteLine(PrecisionNote(cost.Precision));
     }
+
+    private static string PrecisionNote(PriceAllocationPrecision precision) => precision switch
+    {
+        PriceAllocationPrecision.ExactReplayed =>
+            "    Note: a price was added after this period was recorded; the exact split was reconstructed by replaying raw samples still within retention.",
+        PriceAllocationPrecision.ApproximateProportional =>
+            "    Note: APPROXIMATE. A price was added, with an effective time inside an already-recorded 15-minute bucket, after that bucket's raw samples were pruned -- the cost above assumes uniform power across the bucket and splits it by wall-clock time. This is not a measurement.",
+        _ => ""
+    };
 
     public static void PrintDaily(IReadOnlyList<DailyEnergy> days, string currency)
     {
         Console.WriteLine("  Daily breakdown (local dates; each day rounded individually for display only -- totals are rounded once from unrounded sums):");
         Console.WriteLine($"    {"Date",-10}  {"Monitored",9}  {"CPU pkg",13}  {"GPU board",13}  {"Est. wall",13}  {"Est. cost",12}");
+        var anyApproximate = false;
         foreach (var day in days)
         {
             var t = day.Totals;
-            var cost = day.Cost.EstimatedCostRounded is { } c ? Money(c, currency) : "n/a";
+            var approximate = day.Cost.EstimatedCost is not null && day.Cost.Precision != PriceAllocationPrecision.Exact;
+            anyApproximate |= approximate;
+            var cost = day.Cost.EstimatedCostRounded is { } c ? Money(c, currency) + (approximate ? " *" : "") : "n/a";
             Console.WriteLine($"    {day.LocalDate:yyyy-MM-dd}  {Duration(TimeSpan.FromSeconds(t.MonitoredSeconds)),9}  {Wh(t.CpuPackageJoules),13}  {Wh(t.GpuBoardJoules),13}  {Wh(t.EstimatedCompleteJoules),13}  {cost,12}");
         }
+        if (anyApproximate)
+            Console.WriteLine("    * not exact -- a price change landed in an already-recorded, no-longer-raw bucket; see --summary --session <id> for detail.");
     }
 
     public static void PrintSessionLine(MonitoringSession session, EnergyTotals totals)

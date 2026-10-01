@@ -7,10 +7,15 @@
 - **Milestone 002:** energy integration, wall-power estimation, electricity
   cost, SQLite persistence, session lifecycle. Calculation rules:
   `docs/ENERGY_MODEL.md`; storage: `docs/STORAGE.md`.
+- **Milestone 003:** sub-bucket electricity price allocation (Part A --
+  `docs/ENERGY_MODEL.md` section 4) and the first desktop application
+  (`desktop/`, Tauri 2 + React + TypeScript + Tailwind) talking to the
+  unmodified .NET engine through a new `--serve` JSON sidecar protocol. See
+  "Data flow (--serve)" and "Desktop application" below.
 
-There is still no desktop UI and no gaming analytics -- those are future
-milestones, built on top of `WattScope.Core`'s abstractions without needing
-to know LibreHardwareMonitor, NVML, or SQLite exist.
+There is still no gaming analytics -- that remains a future milestone, built
+on top of `WattScope.Core`'s abstractions without needing to know
+LibreHardwareMonitor, NVML, or SQLite exist.
 
 ## Projects
 
@@ -34,7 +39,8 @@ WattScope.Storage      SQLite implementation of IEnergyStore
                        lock. Cross-platform (net10.0).
 
 WattScope.Probe        Standalone CLI. References Core + Hardware + Storage.
-                       Still the only executable -- no desktop UI yet.
+                       The executable the desktop app's sidecar runs, via
+                       its --serve command (below) -- not a separate service.
 
 WattScope.Core.Tests       xUnit, fully mocked / synthetic data, no hardware
                             or database -- runs anywhere.
@@ -135,6 +141,45 @@ Hardware is still enumerated exactly once; the full sensor list is read
 each tick (that is how the providers refresh) but only the bound sensors'
 values leave `PowerSampleBuilder`.
 
+## Data flow (`--serve`, Milestone 003)
+
+The desktop app's native sidecar: the *same* pipeline as `--record` above
+(reused, not duplicated -- `ServeCommand` and `RecordCommand` both drive one
+`EnergyMonitor`/`SamplingEngine`), but speaking newline-delimited JSON on
+stdin/stdout instead of printing text, so a non-.NET host (Tauri's Rust
+process) can consume it without re-implementing any of the energy/cost
+logic:
+
+```
+(same pipeline as --record, down to EnergyMonitor.OnSample)
+        |
+        v
+stdout: one JSON "tick" line per sample (only the fields a dashboard
+        needs -- never the full sensor inventory; see Part E)
+stdin:  one JSON request per line (get_sessions, get_summary, set_price,
+        get/set_estimation, get/set_retention, get_db_info, shutdown)
+        -> dispatched to the *same* DatabaseCommands.Build*Report /
+           SqliteEnergyStore methods --summary/--sessions/--set-price use,
+           serialized directly (no parallel DTO layer to drift out of sync)
+stdout: one JSON "response" line per request, correlated by id
+```
+
+Two `SqliteEnergyStore` connections are opened: one owned exclusively by the
+recording `EnergyMonitor` (writes), one for the request/response loop's
+reads and settings writes -- the same already-supported pattern of a
+separate `--summary`/`--set-price` process reading/writing while `--record`
+holds the `MonitorLock` (`docs/STORAGE.md`), just both ends alive in one
+process. All logging goes to stderr, never stdout, so a log line can never
+corrupt the JSON stream (`Program.cs`, `ConsoleLoggerOptions.LogToStandardErrorThreshold`).
+
+**A real concurrency bug found and fixed while building this**: the
+request-reading loop must run via `Task.Run`, not as a plain un-awaited
+async call -- `Console.In.ReadLineAsync` was observed to not reliably yield
+control back before it has a line to return, which silently starved the
+sampling loop of any chance to run at all (zero ticks were ever emitted
+until the first stdin write arrived). Caught by actually spawning the
+process and watching its output, not by code review; see `ServeCommand.cs`.
+
 ## Provider notes
 
 - **LibreHardwareMonitorProvider** wraps a single `LibreHardwareMonitor.Hardware.Computer`,
@@ -168,9 +213,67 @@ Current state: the Probe CLI runs at whatever privilege level it was
 launched with. Since Milestone 002, a 0 W CPU package reading (the
 non-elevated symptom on this machine) is rejected as `ImplausibleZero`
 rather than integrated, so an unelevated run yields a *partial* wall
-estimate and no cost -- never a silently low one. Planned (future milestone, not implemented): the desktop UI
-and the energy/cost engine stay unelevated; privileged sensor reads move
-into a minimal, separately-installed elevated component (e.g. a Windows
-service) that exposes only selected readings over local, ACL-restricted IPC.
-`ISensorProvider` is the seam for this -- an IPC-backed provider can replace
-the in-process LibreHardwareMonitor provider without changes to Core.
+estimate and no cost -- never a silently low one.
+
+**Milestone 003 implements the unelevated-by-default half of this, not the
+full privileged-broker service.** A minimal, separately-installed elevated
+Windows service exposing sensor reads over an authenticated local IPC
+channel (the design `docs/SENSOR_CONTRACT.md` section "Future requirement"
+describes) was **not** built in this milestone -- it is real, scoped work
+(packaging, service install/uninstall, an ACL'd named pipe, a client
+protocol) that does not fit here. Instead, per the brief's explicit
+allowance for "an honest partial-monitoring state" in lieu of that:
+
+- The desktop app's sidecar (`--serve`) runs **unelevated by default**. GPU
+  board power works; CPU package reads `ImplausibleZero` and the dashboard
+  shows it as an explicit unavailable state (`dashboard.notElevated`),
+  never a substituted zero.
+- Settings has one explicit, user-initiated action ("Restart monitor as
+  administrator") that relaunches *only* the small Probe sidecar elevated,
+  via a real Windows UAC prompt (`Start-Process -Verb RunAs`) -- never the
+  whole UI window. This is a real elevation request a user must approve,
+  not a bypass.
+- **Known limitation of this approach** (documented, not hidden): Windows
+  gives no process handle back across a UAC elevation boundary, so the
+  running desktop window cannot keep talking to the elevated process it
+  just spawned -- live monitoring in that window pauses until the app is
+  restarted, at which point it reconnects to the (now complete, costed)
+  session the elevated process recorded into the same database. See
+  `docs/PROJECT_STATE.md` for the full statement of this gap and what a
+  real privileged-broker service would need to replace it.
+
+`ISensorProvider` remains the seam for that future broker -- an IPC-backed
+provider can still replace the in-process LibreHardwareMonitor provider
+without changes to `WattScope.Core`.
+
+## Desktop application (`desktop/`, Milestone 003)
+
+```
+desktop/src/            React 18 + TypeScript + Tailwind. No charting
+                        library for the live chart (Part E) -- a small
+                        canvas component subscribes to tick events itself
+                        and draws imperatively on a throttled
+                        requestAnimationFrame loop with a bounded ring
+                        buffer, so a new sample never triggers a React
+                        re-render of anything else.
+desktop/src-tauri/      Tauri 2 (Rust). Owns the one --serve sidecar
+                        process for the app's lifetime (src/lib.rs):
+                        spawns it, forwards "tick"/"status" lines as Tauri
+                        events, matches "response" lines back to whichever
+                        frontend request is awaiting that id, and asks it
+                        to stop cleanly on window close.
+desktop/scripts/        publish-probe.ps1: dotnet publish of
+                        WattScope.Probe as a self-contained, single-file
+                        win-x64 binary, placed where Tauri's externalBin
+                        expects a sidecar. Must run before `tauri dev`/
+                        `tauri build` -- Tauri does not build the .NET side.
+```
+
+Localization (English, German, Persian) uses `react-i18next`; Persian sets
+`dir="rtl"` on `<html>` and the layout uses CSS logical properties
+(`ps-`/`pe-`/`border-e`, etc.) throughout so the whole layout mirrors, not
+just text -- numbers, units and timestamps are deliberately kept in a fixed
+Latin-digit, Gregorian format regardless of UI language (a Jalali calendar
+or Eastern Arabic digits on a log timestamp would be a confusing
+"localization," not a faithful one), isolated with `dir="ltr"` spans so they
+read correctly embedded in right-to-left text.

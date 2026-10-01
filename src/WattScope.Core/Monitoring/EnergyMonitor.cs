@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using WattScope.Core.Energy;
 using WattScope.Core.Estimation;
+using WattScope.Core.Pricing;
 
 namespace WattScope.Core.Monitoring;
 
@@ -51,6 +52,8 @@ public sealed class EnergyMonitor
     private readonly ILogger<EnergyMonitor>? _logger;
     private readonly EnergyIntegrator _integrator;
     private readonly EnergyAccumulator _accumulator = new();
+    private readonly Func<ElectricityPriceSchedule>? _priceScheduleProvider;
+    private ElectricityPriceSchedule? _prices;
 
     private readonly List<PowerSample> _pendingSamples = [];
     private readonly List<MonitoringGap> _pendingGaps = [];
@@ -63,13 +66,24 @@ public sealed class EnergyMonitor
     private bool _suspended;
     private MonitorStatistics _stats = new();
 
-    public EnergyMonitor(IEnergyStore store, EnergyMonitorOptions? options = null, TimeProvider? timeProvider = null, ILogger<EnergyMonitor>? logger = null)
+    /// <param name="priceScheduleProvider">
+    /// Supplies the electricity price schedule used to split intervals
+    /// exactly at any price change that falls inside a bucket while it is
+    /// being recorded (see docs/ENERGY_MODEL.md section 4). Read once at
+    /// session start and re-read once per successful flush -- never per
+    /// sample -- so it should be cheap (e.g. a caller-side cache), not a
+    /// fresh database query on every call. Omit to keep the previous
+    /// (bucket-start-price-only) behavior.
+    /// </param>
+    public EnergyMonitor(IEnergyStore store, EnergyMonitorOptions? options = null, TimeProvider? timeProvider = null, ILogger<EnergyMonitor>? logger = null, Func<ElectricityPriceSchedule>? priceScheduleProvider = null)
     {
         _store = store;
         _options = options ?? new EnergyMonitorOptions();
         _time = timeProvider ?? TimeProvider.System;
         _logger = logger;
         _integrator = new EnergyIntegrator(_options.Integration);
+        _priceScheduleProvider = priceScheduleProvider;
+        _prices = priceScheduleProvider?.Invoke();
     }
 
     public MonitoringSession? Session { get { lock (_gate) return _session; } }
@@ -157,7 +171,7 @@ public sealed class EnergyMonitor
             }
 
             if (step.Interval is { } interval)
-                _accumulator.Add(interval, session.Estimation);
+                _accumulator.Add(interval, session.Estimation, _prices);
 
             TrackAvailability(EnergyChannel.CpuPackage, sample.CpuPackage.State, sample.UtcTime);
             TrackAvailability(EnergyChannel.GpuBoard, sample.GpuBoard.State, sample.UtcTime);
@@ -261,6 +275,7 @@ public sealed class EnergyMonitor
             SessionId = session.Id,
             Samples = _pendingSamples.ToList(),
             BucketDeltas = _accumulator.PendingDeltas(session.Id),
+            PriceSplits = _accumulator.PendingPriceSplits(session.Id),
             Gaps = _pendingGaps.ToList(),
             AvailabilityChanges = _pendingAvailability.ToList(),
             LastObservationUtc = _lastObservationUtc
@@ -285,6 +300,11 @@ public sealed class EnergyMonitor
         _pendingGaps.Clear();
         _pendingAvailability.Clear();
         _accumulator.ClearPending();
+        // Refreshed only once per flush (not per sample) to avoid unnecessary
+        // polling; a price added mid-session is picked up within one flush
+        // interval, same latency as everything else this loop persists.
+        if (_priceScheduleProvider is not null)
+            _prices = _priceScheduleProvider();
         _stats = _stats with
         {
             Flushes = _stats.Flushes + 1,

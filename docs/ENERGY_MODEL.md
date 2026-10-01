@@ -1,10 +1,12 @@
 # Energy Model
 
 How WattScope turns power readings into energy, estimated wall energy, and
-cost (Milestone 002). This is the authoritative description of the
-calculation rules. Code lives in `WattScope.Core` (`Energy/`, `Estimation/`,
-`Pricing/`, `Reporting/`, `Monitoring/`), which has no hardware or database
-dependency. All of it is covered by synthetic, deterministic tests.
+cost (Milestone 002; electricity cost allocation revised in Milestone 003 --
+see section 4). This is the authoritative description of the calculation
+rules. Code lives in `WattScope.Core` (`Energy/`, `Estimation/`, `Pricing/`,
+`Reporting/`, `Monitoring/`), which has no hardware or database dependency.
+All of it is covered by synthetic, deterministic tests, plus real-SQLite
+integration tests in `WattScope.Storage.Tests` for the pricing replay path.
 
 ## 1. Channel sources (what gets integrated)
 
@@ -167,22 +169,83 @@ visible, user-made assumption rather than a silent substitution.
 - Prices form a history: each entry applies from its effective time until
   the next one. Adding a price never changes the cost of energy consumed
   before its effective time.
-- **Granularity:** each 15-minute bucket is priced with the entry in effect
-  at the bucket's start. A price that becomes effective mid-bucket applies
-  from the next bucket.
 - Energy consumed before the first price is **unpriced** and reported as
   such; it is never priced at zero. With no price at all, cost is "n/a".
 - Only the complete wall estimate is priced. The partial (lower-bound)
   estimate's cost is shown separately, labeled, and never added.
+
+### Granularity: priced at the effective time of consumption (Milestone 003)
+
+Energy is priced with the price in effect **at the instant it was
+consumed**, not the price at the start of its containing 15-minute bucket.
+A price change that falls in the middle of a bucket splits that bucket's
+cost between the two prices instead of charging the whole bucket at
+whichever price happened to be in effect at the bucket's start (the
+Milestone 002 behavior). Three things make this correct without changing
+the energy model itself:
+
+1. **Interpolation assumption**: a price-change instant that falls strictly
+   inside an already-verified `PowerInterval` (between two consecutive valid
+   samples) is treated exactly like a 15-minute bucket boundary --
+   `PowerInterval.SplitAt` linearly interpolates power at that instant
+   (`LinearPower.At`, the same trapezoidal-rule assumption section 2 already
+   documents for bucket splitting), so the two pieces' energies sum exactly
+   to the original interval's energy. No measurement is invented: a price
+   change is never allowed to create energy across a *gap* -- only within an
+   already-verified interval, the same rule as bucket splitting.
+2. **When it happens**: while a session is being recorded, `EnergyAccumulator`
+   splits every interval at 15-minute boundaries *and* at any price-schedule
+   instant it contains, using the real power curve while it still exists in
+   memory. This produces one row in a new, additive `bucket_price_split`
+   table per (bucket, price) actually observed -- one row for the ordinary
+   case of a single price throughout a bucket, more only when a price
+   genuinely changed mid-bucket. `energy_bucket` itself is unchanged, so
+   Milestone 002 data and readers keep working (requirement: preserve
+   existing database compatibility).
+3. **Historical repricing -- inspected, not assumed possible**: a price can
+   be added *after* a bucket was already recorded, with an effective time
+   that lands inside it (a retroactive backfill). Whether that bucket can
+   still be priced exactly depends on what survives:
+   - If live split rows exist **and still agree with the current price
+     schedule**, they are used directly: exact, by construction.
+   - If they don't (the schedule now shows a price boundary the recorded
+     splits never accounted for) but raw per-sample power (`power_sample`)
+     is still within retention (default 7 days, `--retention`), the bucket is
+     **replayed**: the same split logic runs again against the raw samples,
+     giving an exact result -- with one honestly-stated caveat: raw samples
+     are stored rounded to whole milliwatts, so a replay uses slightly less
+     precision than the original live integration (negligible; below sensor
+     resolution, same rounding `docs/STORAGE.md` already documents as not
+     affecting energy).
+   - If raw samples are gone (pruned past retention), **exact reconstruction
+     is not possible** -- the bucket's stored total is only a joules/seconds
+     aggregate with no timing left inside it. WattScope splits it
+     proportionally by wall-clock time between the sub-periods the price
+     boundaries define (assumes uniform average power across the bucket) and
+     labels the result an **approximation**, never presenting it as exact.
+     `--summary`/`--db-info` and the daily table mark this explicitly (a `*`
+     footnote, or an explicit "APPROXIMATE" note) rather than silently
+     rounding the honesty away.
+
+   This is a real, inspected trade-off, not a guess: `CostCalculator` exposes
+   exactly the three tiers above as `PriceAllocationPrecision` (`Exact` /
+   `ExactReplayed` / `ApproximateProportional`) on every `CostBreakdown`, so a
+   caller (the CLI or the desktop UI) can always tell which one it got.
+4. **Report consistency**: session, daily and monthly reports all resolve
+   cost through the same `CostCalculator.AllocateBucket`, so they agree with
+   each other by construction -- a monthly total is still the unrounded sum
+   over the same buckets a daily view uses (see rounding rules below), now
+   correctly priced per sub-bucket segment rather than per whole bucket.
 
 ### Conversion and rounding rules
 
 1. Joules (double) -> kWh (decimal): `(decimal)joules / 3 600 000`. The
    double-to-decimal conversion keeps 15 significant digits; no other
    rounding.
-2. Cost per bucket: `kWh * price`, full decimal precision (28-29 digits), not
-   rounded.
-3. Session / day / month totals: the sum of unrounded bucket costs.
+2. Cost per priced piece (a whole bucket, or a sub-bucket segment when a
+   price changed inside it): `kWh * price`, full decimal precision (28-29
+   digits), not rounded.
+3. Session / day / month totals: the sum of unrounded piece costs.
 4. Display: rounded **once**, to 2 decimals, midpoint **away from zero**
    (`MoneyRounding`: 0.125 -> 0.13, 2.675 -> 2.68). The unrounded amount is
    shown alongside.

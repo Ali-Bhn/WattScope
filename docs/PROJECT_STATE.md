@@ -1,7 +1,7 @@
 # Project State
 
-Last updated: 2026-09-27, after implementing Milestone 002 and completing a
-real elevated end-to-end validation (recording, pricing, and cost).
+Last updated: 2026-10-01, after implementing and validating Milestone 003
+(sub-bucket electricity pricing and the first desktop application).
 
 ## Status
 
@@ -9,7 +9,110 @@ real elevated end-to-end validation (recording, pricing, and cost).
 - **Milestone 002** -- Energy Calculation, Electricity Cost & Persistent
   Storage: implemented and validated, **including a real elevated
   `--record` session with a correctly computed cost end to end**, with the
-  limitations listed in the next section. Milestone 003 not started.
+  limitations listed in the next section (item 5 has since been fixed by
+  Milestone 003 Part A -- see the note there).
+- **Milestone 003** -- Desktop Application & Live Dashboard: **implemented
+  and validated** -- see the Milestone 003 section below for what was
+  verified, how, and the known limitations.
+
+# Milestone 003
+
+Rules for Part A: `docs/ENERGY_MODEL.md` section 4. Architecture for Part
+B-L: `docs/ARCHITECTURE.md` ("Data flow (--serve)", "Desktop application",
+"Privilege model").
+
+## Part A -- sub-bucket electricity price allocation
+
+| Requirement | Verification |
+|---|---|
+| Price energy at the effective time of consumption, not bucket-start | `PowerInterval.SplitAt` generalizes the existing bucket-boundary split to arbitrary instants; `EnergyAccumulator.Add` splits at price-schedule instants too, live, while the real power curve still exists |
+| Handle a price change within an aggregation bucket | `bucket_price_split` table (migration v2, additive): one row per (bucket, price) actually observed; `CostCalculator.AllocateBucket`'s 3-tier allocation (`Exact`/`ExactReplayed`/`ApproximateProportional`) |
+| Preserve historical prices; never reprice the past silently wrong | `ElectricityPriceSchedule` unchanged (append-only); `AllocateBucket` detects when recorded splits no longer match the *current* schedule (a retroactive price add) and only then falls through to replay/approximate |
+| Inspect whether persisted aggregates allow exact historical repricing | Yes, within raw retention (`SqliteEnergyStore.TryRepriceBucket` replays raw samples with the same split logic, gated by a sanity check against the bucket's own recorded `MonitoredSeconds`); **no** beyond retention -- an explicit, flagged `ApproximateProportional` result, never presented as exact |
+| No unnecessary intermediate rounding | Unrounded `double`/`decimal` throughout; rounding only at final display (`MoneyRounding`), unchanged from Milestone 002 |
+| Session/daily/monthly consistency | All three resolve cost through the same `CostCalculator.AllocateBucket`; energy itself (not cost) is untouched by this change |
+| Preserve existing database compatibility | `energy_bucket` and every Milestone 002 table/row untouched; `bucket_price_split` is new and additive; a bucket predating this feature (or recorded with no price schedule) falls back to the unchanged bucket-start rule, which is already exact when a single price applied throughout -- the overwhelming majority of real buckets |
+| Regression tests for mid-bucket price changes | `PowerIntervalSplitTests` (Core, synthetic), `CostCalculatorTests` (Core, the 3 allocation tiers against hand-computed values), `PriceAllocationTests` (**Storage**, a real SQLite database, a real `EnergyMonitor` recording a deliberate 100W->300W step profile across a price change, then a retroactive price add both with and without raw samples pruned -- the approximate tier's result is asserted to be *visibly different* from the exact one, proving it is a real approximation, not accidentally exact) |
+| Full regression suite still passes | `dotnet test`: 133/133 (Core 102, Storage 20, Hardware 11), 0 warnings, 0 errors |
+| Real runtime validation, not just unit tests | Ran the actual built `WattScope.Probe.exe`: fresh DB migrates to schema v2, `--set-price` prints the new effective-time-of-consumption message, `--db-info` shows the new "Price-split rows" line, `--selftest` 29/29 |
+
+## Part B-L -- desktop application (`desktop/`)
+
+| Requirement | Verification |
+|---|---|
+| Tauri 2 + React + TypeScript + Tailwind, local-first | Built; no cloud dependency, no accounts, no telemetry, no subscriptions anywhere in the code |
+| Native integration without duplicate monitoring processes | New `--serve` command on `WattScope.Probe` reuses the *same* `EnergyMonitor`/`SamplingEngine` pipeline `--record` uses (not a second implementation); `MonitorLock` still limits one recorder per database |
+| No shell command injection | The sidecar is spawned with fixed argv (`tauri-plugin-shell` sidecar, no string-built shell command); requests to it are structured JSON over stdin, not text commands |
+| Clean startup/shutdown, safe process lifecycle | Verified with the actual built, installed-shape app (see below): window close sends a JSON `shutdown` request, the sidecar flushes and marks the session `Stopped` (not left `Active`/needing crash recovery), and the process exits before the window finishes closing |
+| Dashboard shows exactly the required fields, never a substituted zero | `Dashboard.tsx`: system/CPU/GPU/other power, session duration/energy/cost, sensor availability, estimate completeness, monitoring status; CPU/GPU show an explicit unavailable reason (including `dashboard.notElevated` for `ImplausibleZero`) instead of a dash-to-zero substitution |
+| Live chart: bounded history, efficient updates, no unnecessary rerendering | `LiveChart.tsx` subscribes to tick events itself and draws to canvas on a throttled `requestAnimationFrame` loop from a fixed-capacity (300-point) ring buffer kept in a `ref`, entirely outside React's render cycle -- a new sample never re-renders the rest of the UI |
+| Only the information the dashboard needs leaves the sidecar | `TickMessage` (Serve/TickMessage.cs) carries ~15 scalar fields, never the full discovered sensor inventory (which can be 150-260+ sensors per `docs/SENSOR_CONTRACT.md`) |
+| Historical reports: current session, previous sessions, daily, monthly, cost history; one data store | `Reports.tsx` + `get_summary`/`get_sessions` requests, which call the *same* `EnergyReportBuilder`/`SqliteEnergyStore` methods the CLI's `--summary`/`--sessions` use (`DatabaseCommands.BuildSessionReport`/`BuildPeriodReport`, factored out for this reuse) -- no second database or parallel report logic |
+| Settings: price, other-component watts, PSU efficiency, monitoring interval, language, raw retention; measured vs. assumed made explicit | `Settings.tsx`; interval changes restart the sidecar with `--resume` (an honest "Paused" gap recorded, no energy invented across it) since the .NET engine has no live-reconfigure path for sampling interval; validation client-side and server-side (the existing `ArgumentException` paths in `SqliteEnergyStore`/`ElectricityPriceSchedule`/`EstimationSettings`, surfaced as structured JSON errors) |
+| Localization: English, German, Persian; real RTL, not mirrored text only | `react-i18next`; `applyDocumentDirection` sets `dir`/`lang` on `<html>`; layout uses CSS logical properties (`border-e`, `text-start`, `ms-`/`me-`) throughout, audited with a repo-wide search for leftover `pl-/pr-/ml-/mr-/text-left/text-right` (none found outside explanatory comments) |
+| Numbers/units/identifiers stay readable in RTL | `lib/format.ts` always formats with fixed `en-US` (Latin digit, Gregorian) conventions regardless of UI language, paired with a `<Num>` component (`dir="ltr"`, `unicode-bidi: isolate`) at every call site |
+| Minimum privilege investigated; no insecure UAC bypass; UI never runs elevated | See `docs/ARCHITECTURE.md` "Privilege model": sidecar unelevated by default; an explicit, user-initiated Settings action requests a real Windows UAC prompt (`Start-Process -Verb RunAs`) for *only* the small Probe process, never the window. A full privileged-broker service was not built this milestone -- real, separately-scoped work -- which is the honest partial-monitoring state the brief allows in lieu of it |
+| Performance: no busy-waiting, no redundant polling, bounded memory | Chart history bounded (above); tick path adds zero DB queries beyond what `--record` already does per sample; Reports' current-session view polls `get_summary` every 10 s (matching the existing 10 s flush interval, not arbitrary); monitoring continues independently of the UI (a separate OS process) |
+| .NET test suite, frontend typecheck, frontend build, Tauri build all actually run | `dotnet test`: 133/133. `npm run typecheck`: clean. `npm run build` (Vite): clean, 228 KB JS / 12 KB CSS gzipped to ~76 KB total. `npm run tauri build`: succeeded, producing both `WattScope_0.1.0_x64_en-US.msi` (36.0 MiB) and `WattScope_0.1.0_x64-setup.exe` (26.95 MiB) |
+| Real hardware data in the real built app, not mocked frontend data | Launched the actual built `src-tauri/target/release/wattscope.exe` (not `tauri dev`): it spawned a real `msedgewebview2.exe` render process and a real `wattscope-probe.exe --serve` child; `--sessions` against the live database showed a new session actively recording (`monitored 00:00:10`, growing); GPU board power ticks were real, varying values (consistent with the dev machine's earlier-documented real GPU behavior); CPU package showed the honest `ImplausibleZero`/unelevated state, matching Milestone 001/002's own documented finding for this machine -- never a substituted zero. Closing the window produced a session marked `Stopped`, not an orphan needing crash recovery |
+
+### A real bug this validation caught (and fixed)
+
+While smoke-testing `--serve` directly (before wiring up Tauri), the tick
+stream was completely empty for several seconds of real wall-clock time
+despite a 300 ms sampling interval -- `Console.In.ReadLineAsync` does not
+reliably yield control back to its caller before it has a line to return,
+so running the stdin request loop as a plain un-awaited async call silently
+starved the sampling loop of any chance to run at all. Fixed by moving the
+request loop onto its own thread via `Task.Run`. This was found by actually
+spawning the process and watching its output with a dedicated harness after
+two separate PowerShell-based attempts gave misleading signal (an injected
+BOM corrupting the first stdin write, and `Register-ObjectEvent`-based
+output capture silently losing events) -- worth recording because it is
+exactly the kind of bug code review alone would not have caught.
+
+## Known limitations (Milestone 003)
+
+1. **No privileged broker service.** The sidecar runs unelevated by
+   default; CPU package power is unavailable on machines (like this one)
+   where it needs elevation. The Settings "restart elevated" action is a
+   real, working, user-initiated UAC prompt for the Probe process only --
+   but once triggered, the running desktop window loses its connection to
+   that process (Windows gives no handle back across a UAC elevation
+   boundary) until the app is restarted. A minimal, separately-installed
+   elevated component exposing sensor reads over authenticated local IPC
+   (`docs/SENSOR_CONTRACT.md`, "Future requirement") remains future work --
+   real, scoped work (service packaging, install/uninstall, an ACL'd named
+   pipe, a client protocol), not something to shortcut.
+2. **Monitoring-interval change is a restart, not a live reconfiguration.**
+   `WattScope.Core`'s sampling loop has no concept of changing its own
+   interval mid-session; Settings' interval control restarts the sidecar
+   with `--resume`, which is honest (a real "Paused" gap is recorded) but
+   means a brief live-view interruption on every interval change.
+3. **Gaming-performance impact (frame-rate) was not measured.** CPU/memory
+   overhead of the sidecar process itself was measured on a real launch
+   (~1.2 s CPU time and ~88 MiB working set over a ~27 s run, consistent
+   with Milestone 002's own measured `--record` overhead, since it is the
+   same code path) -- but no game was run alongside it in this environment,
+   so no FPS-impact claim is made one way or the other, per the brief's own
+   instruction not to claim this without controlled testing.
+4. **Elevated end-to-end desktop validation was not performed.** The real
+   launch validation above ran unelevated (consistent with the documented
+   default); it was not re-run elevated to confirm the dashboard displays
+   complete, costed CPU data end-to-end through the UI (Milestone 002 already
+   validated this for the CLI/engine directly; the desktop UI adds a
+   presentation layer on top of the same, unmodified data, but that specific
+   combination was not re-verified interactively in this session).
+5. **This repo's own frontend has no automated test suite** (no Vitest/
+   Playwright) -- verification for `desktop/` relied on `tsc --noEmit`,
+   `vite build`, `cargo check`, `tauri build`, and the real launch above,
+   not unit/component tests. Adding frontend tests is reasonable future
+   work, not attempted here to keep this milestone's scope to what the
+   brief asked for.
+6. The pre-existing `SamplingEngineTests.AfterAStall_DoesNotBurstCatchUpTicks`
+   test is timing-sensitive and occasionally flakes under system load when
+   the full suite runs in parallel (passes reliably in isolation); this is
+   unrelated to Milestone 003 and was not introduced by it.
 
 # Milestone 002
 
@@ -70,9 +173,14 @@ Rules: `docs/ENERGY_MODEL.md`. Database: `docs/STORAGE.md`.
    (`docs/ARCHITECTURE.md`, "Privilege model").
 4. The estimation defaults (50 W other components, 90 % PSU efficiency) are
    placeholders, not measured for this machine. There is no wall-meter input.
-5. Price changes apply at 15-minute bucket granularity (bucket-start price).
-   Negative (dynamic-tariff) prices and multiple currencies are not
-   supported. **Observed in practice** during elevated validation: a price
+5. **Fixed by Milestone 003 Part A** (see `docs/ENERGY_MODEL.md` section 4):
+   price changes are now allocated at the effective time of consumption,
+   splitting a bucket a price change falls inside instead of pricing the
+   whole bucket at whichever price was in effect at its start. The rest of
+   this item is kept as the historical record of the Milestone 002 behavior
+   and the real edge case it caused. Negative (dynamic-tariff) prices and
+   multiple currencies are still not supported. **Observed in practice**
+   during elevated validation: a price
    set 24 seconds before a session started (`--set-price` with no
    `--effective`, i.e. "now") did not price that session at all, because
    the session's whole 5-minute run fell inside one 15-minute UTC bucket
@@ -85,10 +193,9 @@ Rules: `docs/ENERGY_MODEL.md`. Database: `docs/STORAGE.md`.
    local midnight the same day (`--effective 2026-09-27T00:00:00`); the
    original 18:08:55 entry was left in place (harmless: same price,
    superseded for that bucket by the earlier entry, and the schedule keeps
-   both timestamps). **Candidate follow-up for a later milestone:** either
-   warn interactively when `--set-price`/`--record` start would leave the
-   current bucket unpriced, or price at finer-than-bucket granularity for
-   the bucket a price change falls into.
+   both timestamps). The candidate follow-up noted at the time ("price at
+   finer-than-bucket granularity for the bucket a price change falls into")
+   is exactly what Milestone 003 Part A implemented.
 6. A session keeps the estimation settings it was created with, even when
    resumed after settings change.
 7. Up to ~10 s of the most recent data is lost on a process crash (flush

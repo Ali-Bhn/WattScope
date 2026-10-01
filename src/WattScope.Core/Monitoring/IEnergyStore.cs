@@ -1,5 +1,6 @@
 using WattScope.Core.Energy;
 using WattScope.Core.Estimation;
+using WattScope.Core.Pricing;
 
 namespace WattScope.Core.Monitoring;
 
@@ -55,11 +56,19 @@ public sealed record EnergyWriteBatch
     /// <summary>Energy to <em>add</em> to each bucket (deltas, not absolute values).</summary>
     public required IReadOnlyList<EnergyBucket> BucketDeltas { get; init; }
 
+    /// <summary>
+    /// Per-price-entry deltas for buckets that straddled a price change while
+    /// being recorded (see <see cref="Energy.EnergyAccumulator.PendingPriceSplits"/>).
+    /// Empty in the overwhelming majority of flushes -- defaults to empty so
+    /// existing callers that never price-split still compile.
+    /// </summary>
+    public IReadOnlyList<PricedEnergySegment> PriceSplits { get; init; } = [];
+
     public required IReadOnlyList<MonitoringGap> Gaps { get; init; }
     public required IReadOnlyList<AvailabilityChange> AvailabilityChanges { get; init; }
     public DateTimeOffset? LastObservationUtc { get; init; }
 
-    public bool IsEmpty => Samples.Count == 0 && BucketDeltas.Count == 0 && Gaps.Count == 0 && AvailabilityChanges.Count == 0;
+    public bool IsEmpty => Samples.Count == 0 && BucketDeltas.Count == 0 && PriceSplits.Count == 0 && Gaps.Count == 0 && AvailabilityChanges.Count == 0;
 }
 
 /// <summary>Persistence needed by <see cref="EnergyMonitor"/>. Implemented by WattScope.Storage (SQLite).</summary>

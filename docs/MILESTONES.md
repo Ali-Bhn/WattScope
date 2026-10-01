@@ -43,9 +43,50 @@ Status: **implemented** -- see `docs/PROJECT_STATE.md` for what was verified
 and the known limitations. Rules: `docs/ENERGY_MODEL.md`,
 `docs/STORAGE.md`.
 
+## Milestone 003 -- Desktop Application & Live Dashboard
+
+1. **Correct electricity price allocation** (Part A): price energy at the
+   effective time of consumption, splitting a 15-minute bucket a price
+   change falls inside instead of pricing the whole bucket at whichever
+   price applied at its start. Exact when split live while recording, exact
+   when replayed from raw samples still within retention, an explicit
+   flagged approximation only when neither is available. Rules:
+   `docs/ENERGY_MODEL.md` section 4.
+2. The first real desktop application (`desktop/`): Tauri 2 + React +
+   TypeScript + Tailwind, local-first (no cloud, no accounts, no telemetry,
+   no subscriptions), talking to the unmodified `WattScope.Core`/
+   `Hardware`/`Storage` engine through a new `--serve` JSON sidecar command
+   on `WattScope.Probe` -- the same recording pipeline `--record` uses, not
+   a duplicate.
+3. Dark-first UI: live dashboard (system/CPU/GPU/other power, session
+   duration/energy/cost, sensor availability, estimate completeness,
+   monitoring status -- never a substituted zero for an unavailable
+   reading), a bounded-history live power chart, historical reports
+   (current session, previous sessions, daily, monthly, cost history), and
+   settings (price, other-component watts, PSU efficiency, monitoring
+   interval, language, raw retention, an explicit elevation control).
+4. Localization: English, German, Persian (`react-i18next`), with a real
+   right-to-left layout for Persian (CSS logical properties throughout, not
+   just mirrored text) and numbers/units/timestamps kept in a fixed,
+   unambiguous format regardless of UI language.
+5. Native integration: the sidecar runs unelevated by default (GPU power
+   works, CPU package reports an explicit unavailable state rather than a
+   substituted zero); a least-privilege elevated *broker service* was not
+   built this milestone (real, separately-scoped work) -- instead, an
+   explicit, user-initiated action restarts only the small sidecar process
+   elevated via a real Windows UAC prompt, never the whole UI. See
+   `docs/ARCHITECTURE.md` ("Privilege model") for exactly what that
+   trade-off does and does not cover.
+
+Out of scope (per the brief): gaming analytics, Milestone 004.
+
+Status: **implemented** -- see `docs/PROJECT_STATE.md` for what was
+verified, build/test results, and known limitations.
+
 ## Later milestones (not started)
 
-Numbering and scope for milestones after 002 are not yet defined in this
+Numbering and scope for milestones after 003 are not yet defined in this
 repository. Items already identified as future work (see
-`docs/PROJECT_STATE.md`): a least-privilege sensor component so the UI
-never runs elevated, and the desktop UI itself.
+`docs/PROJECT_STATE.md`): a least-privilege elevated broker service so the
+sidecar never needs a user-triggered UAC restart to get complete CPU power,
+and gaming-session analytics.
