@@ -11,6 +11,16 @@ public sealed class DatabaseSchemaTooNewException(int found, int supported)
 }
 
 /// <summary>
+/// Raised when a second Active session is created/reopened in a database that
+/// already has one. The database enforces this (<c>ux_session_single_active</c>),
+/// so it holds even if two processes race past their own in-memory checks.
+/// Derives from <see cref="InvalidOperationException"/> so existing callers
+/// that already handle "session cannot be started" keep working.
+/// </summary>
+public sealed class ActiveSessionExistsException(Exception inner)
+    : InvalidOperationException("Another monitoring session is already active in this database. At most one session may be active at a time.", inner);
+
+/// <summary>
 /// Forward-only schema migrations tracked in <c>PRAGMA user_version</c>. Each
 /// migration runs in its own transaction together with the version bump, so a
 /// failed migration leaves the database at the previous version. Never edit a
@@ -149,6 +159,27 @@ internal static class SchemaMigrations
                 partial_s  REAL NOT NULL,
                 PRIMARY KEY (session_id, bucket_start_utc_s, price_effective_utc_ms)
             ) WITHOUT ROWID;
+            """),
+
+        // Session ownership (Milestone 004): at most one Active session per
+        // database, enforced by the database itself rather than by UI or
+        // process state. A database that already has several Active rows
+        // (orphans of crashed recorders) is repaired first: every Active
+        // session except the newest is closed as Interrupted at its last
+        // persisted observation -- the same rule crash recovery applies.
+        new(3, "Single active session", """
+            UPDATE session
+            SET status = 2,
+                ended_utc_ms = COALESCE(last_observation_utc_ms, started_utc_ms),
+                end_reason = 'Closed by migration: more than one session was marked active.'
+            WHERE status = 0 AND id <> (SELECT max(id) FROM session WHERE status = 0);
+
+            UPDATE sensor_availability
+            SET to_utc_ms = COALESCE((SELECT last_observation_utc_ms FROM session WHERE session.id = sensor_availability.session_id), from_utc_ms)
+            WHERE to_utc_ms IS NULL
+              AND session_id IN (SELECT id FROM session WHERE status <> 0);
+
+            CREATE UNIQUE INDEX ux_session_single_active ON session(status) WHERE status = 0;
             """)
     ];
 

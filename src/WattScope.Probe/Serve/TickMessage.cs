@@ -29,6 +29,9 @@ public sealed record TickMessage
     public required double? EstimatedTotalWatts { get; init; }
     public required EstimateCompleteness EstimateCompleteness { get; init; }
 
+    /// <summary>Completeness of the session's estimate so far (not just this sample): only a Complete session has a cost shown.</summary>
+    public required EstimateCompleteness SessionCompleteness { get; init; }
+
     public required double SessionSeconds { get; init; }
     /// <summary>Complete estimated energy for the session so far, in kWh.</summary>
     public required double SessionKwh { get; init; }

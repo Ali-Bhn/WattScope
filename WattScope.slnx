@@ -8,6 +8,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/WattScope.Core.Tests/WattScope.Core.Tests.csproj" />
     <Project Path="tests/WattScope.Hardware.Tests/WattScope.Hardware.Tests.csproj" />
+    <Project Path="tests/WattScope.Probe.Tests/WattScope.Probe.Tests.csproj" />
     <Project Path="tests/WattScope.Storage.Tests/WattScope.Storage.Tests.csproj" />
   </Folder>
 </Solution>

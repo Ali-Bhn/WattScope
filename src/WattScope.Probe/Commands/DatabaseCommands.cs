@@ -101,6 +101,14 @@ public static class DatabaseCommands
     public static void PrintSession(SqliteEnergyStore store, MonitoringSession session, ElectricityPriceSchedule prices)
     {
         EnergyConsoleReporter.PrintReport(BuildSessionReport(store, session, prices));
+        var gaps = store.GetSessionGaps(session.Id);
+        if (gaps.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("  Monitoring gaps (no energy is recorded for them):");
+            foreach (var gap in gaps)
+                Console.WriteLine($"    {gap.Reason,-18} {EnergyConsoleReporter.Local(gap.StartUtc)} -> {EnergyConsoleReporter.Local(gap.EndUtc)}  ({EnergyConsoleReporter.Duration(gap.Duration)})");
+        }
         Console.WriteLine();
         Console.WriteLine("  Sensors used:");
         foreach (var binding in session.Sensors)

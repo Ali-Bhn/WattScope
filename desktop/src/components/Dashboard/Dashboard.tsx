@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLatestTick, useSidecarStatus } from "@/hooks/useSidecar";
+import { useMonitoring } from "@/hooks/useSidecar";
 import { formatDuration, formatKwh, formatMoney, formatWatts } from "@/lib/format";
+import { costVisibility, type MonitoringQuality } from "@/lib/monitoring";
 import { Num } from "@/components/Num";
 import { StatCard } from "./StatCard";
 import { LiveChart } from "@/components/LiveChart/LiveChart";
@@ -12,23 +14,53 @@ function unavailableReason(state: ReadingState, t: (key: string) => string): str
   return `${t("dashboard.unavailable")} (${state})`;
 }
 
+const QUALITY_TONE: Record<MonitoringQuality, string> = {
+  starting: "border-surface-border bg-surface-1 text-ink-secondary",
+  complete: "border-accent-green/30 bg-accent-green/10 text-accent-green",
+  partial: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+  sensorUnavailable: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+  stopped: "border-surface-border bg-surface-1 text-ink-secondary",
+  unavailable: "border-red-500/30 bg-red-500/10 text-red-300",
+};
+
 export function Dashboard() {
   const { t } = useTranslation();
-  const tick = useLatestTick();
-  const status = useSidecarStatus();
+  const { quality, tick, status, start, stop } = useMonitoring();
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const statusState = status?.state ?? (tick ? "recording" : undefined);
-  const statusLabel = statusState ? t(`dashboard.status.${statusState}`, statusState) : t("common.loading");
-  const statusTone = statusState === "error" ? "warn" : statusState === "recording" ? "measured" : "neutral";
+  const running = quality === "starting" || quality === "complete" || quality === "partial" || quality === "sensorUnavailable";
+  const cost = costVisibility(tick);
+
+  const toggle = async () => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await (running ? stop() : start());
+    } catch (e) {
+      setActionError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
+      <div className={`card flex flex-wrap items-center justify-between gap-3 ${QUALITY_TONE[quality]}`}>
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-semibold">{t(`dashboard.quality.${quality}`)}</span>
+          {quality !== "complete" && <span className="max-w-2xl text-xs opacity-90">{t(`dashboard.qualityHelp.${quality}`)}</span>}
+        </div>
+        <button type="button" className="btn" onClick={toggle} disabled={busy || quality === "starting"}>
+          {running ? t("dashboard.stopMonitoring") : t("dashboard.startMonitoring")}
+        </button>
+      </div>
+
+      {(actionError || (status && (status.state === "error" || status.state === "failed" || status.state === "restarting") && status.message)) && (
+        <div className="card border-red-500/30 bg-red-500/10 text-sm text-red-300">{actionError ?? status?.message}</div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <StatCard
-          label={t("dashboard.monitoringStatus")}
-          value={statusLabel}
-          badge={{ text: statusTone === "warn" ? "!" : "", tone: statusTone }}
-        />
         <StatCard
           label={t("dashboard.systemPower")}
           value={<Num>{formatWatts(tick?.estimatedTotalWatts ?? null)}</Num>}
@@ -60,8 +92,8 @@ export function Dashboard() {
         />
         <StatCard
           label={t("dashboard.sessionCost")}
-          value={<Num>{tick?.sessionCostApprox != null ? formatMoney(tick.sessionCostApprox, tick.currency ?? "EUR", 4) : "n/a"}</Num>}
-          sub={tick?.sessionCostApprox != null ? t("dashboard.approxCost") : undefined}
+          value={<Num>{cost === "complete" && tick?.sessionCostApprox != null ? formatMoney(tick.sessionCostApprox, tick.currency ?? "EUR", 4) : "n/a"}</Num>}
+          sub={cost === "complete" ? t("dashboard.approxCost") : cost === "withheldPartial" ? t("dashboard.costWithheld") : undefined}
         />
         <StatCard
           label={t("dashboard.sensorAvailability")}
@@ -78,10 +110,6 @@ export function Dashboard() {
       </div>
 
       <LiveChart />
-
-      {status?.message && (
-        <div className="card border-amber-500/30 bg-amber-500/10 text-sm text-amber-300">{status.message}</div>
-      )}
     </div>
   );
 }

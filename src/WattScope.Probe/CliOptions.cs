@@ -32,6 +32,9 @@ public sealed record CliOptions
     public bool Resume { get; init; }
     public long? ResumeSessionId { get; init; }
     public bool Quiet { get; init; }
+
+    /// <summary>--serve only: start the process idle (not monitoring) and wait for a start_monitoring request.</summary>
+    public bool Paused { get; init; }
     public long? SessionId { get; init; }
     public DateOnly? Day { get; init; }
     public (int Year, int Month)? Month { get; init; }
@@ -71,7 +74,7 @@ public sealed record CliOptions
         [CliCommand.Monitor] = ["--interval", "--duration", "--export"],
         [CliCommand.Record] = ["--interval", "--duration", "--db", "--resume", "--quiet"],
         // --serve is the machine-readable counterpart of --record, for the desktop UI's sidecar; see docs/ARCHITECTURE.md.
-        [CliCommand.Serve] = ["--interval", "--db", "--resume"],
+        [CliCommand.Serve] = ["--interval", "--db", "--resume", "--paused"],
         [CliCommand.Sessions] = ["--db"],
         [CliCommand.Summary] = ["--db", "--session", "--day", "--month"],
         [CliCommand.SetPrice] = ["--db", "--effective", "--currency"],
@@ -155,6 +158,9 @@ public sealed record CliOptions
                     break;
                 case "--quiet":
                     result = result with { Quiet = true };
+                    break;
+                case "--paused":
+                    result = result with { Paused = true };
                     break;
                 case "--session":
                     if (!TryNext(args, ref i, out var sessionText) || !long.TryParse(sessionText, NumberStyles.None, CultureInfo.InvariantCulture, out var sessionId))
@@ -258,7 +264,7 @@ public sealed record CliOptions
           WattScope.Probe.exe --discover [--export <path>]
           WattScope.Probe.exe --monitor [--interval <ms>] [--duration <seconds>] [--export <path>]
           WattScope.Probe.exe --record [--interval <ms>] [--duration <seconds>] [--resume [<id>]] [--quiet] [--db <path>]
-          WattScope.Probe.exe --serve [--interval <ms>] [--resume [<id>]] [--db <path>]
+          WattScope.Probe.exe --serve [--paused] [--interval <ms>] [--resume [<id>]] [--db <path>]
           WattScope.Probe.exe --sessions [--db <path>]
           WattScope.Probe.exe --summary [--session <id> | --day <yyyy-MM-dd> | --month <yyyy-MM>] [--db <path>]
           WattScope.Probe.exe --set-price <EUR/kWh> [--effective <date/time>] [--currency <code>] [--db <path>]
@@ -285,7 +291,9 @@ public sealed record CliOptions
                                 text: one JSON line per sample on stdout, plus JSON request/response for
                                 reports and settings. Used by the desktop app's native sidecar; see
                                 docs/ARCHITECTURE.md. Never prints anything else to stdout; all logging goes
-                                to stderr.
+                                to stderr. Monitoring starts immediately unless --paused is given; either
+                                way it can be started/stopped by request while the process stays up. The
+                                process exits on a shutdown request or when stdin closes.
           --sessions            List recent sessions with their energy totals.
           --summary             Energy and cost report. Default: the latest session.
           --set-price <price>   Add an electricity price (per kWh, '.' decimal separator). Applies from

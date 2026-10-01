@@ -1,6 +1,12 @@
 {
-  "app": { "title": "WattScope" },
-  "nav": { "dashboard": "Übersicht", "reports": "Berichte", "settings": "Einstellungen" },
+  "app": {
+    "title": "WattScope"
+  },
+  "nav": {
+    "dashboard": "Übersicht",
+    "reports": "Berichte",
+    "settings": "Einstellungen"
+  },
   "dashboard": {
     "systemPower": "Geschätzte Systemleistung",
     "cpuPower": "CPU-Paket",
@@ -29,7 +35,25 @@
       "complete": "Vollständig",
       "partial": "Teilweise (untere Grenze)",
       "none": "Keine Schätzung"
-    }
+    },
+    "quality": {
+      "starting": "Startet...",
+      "complete": "Vollständige Überwachung",
+      "partial": "Teilweise Überwachung",
+      "sensorUnavailable": "Sensor nicht verfügbar",
+      "stopped": "Überwachung gestoppt",
+      "unavailable": "Monitor läuft nicht"
+    },
+    "qualityHelp": {
+      "starting": "Warte auf den ersten Messwert...",
+      "partial": "Die CPU-Leistung ist nicht verfügbar (WattScope läuft auf einem Rechner, der es braucht, nicht als Administrator). Die GPU wird weiterhin überwacht. Der Systemwert ist eine untere Grenze, Kosten werden nicht angezeigt.",
+      "sensorUnavailable": "Derzeit ist kein benötigter Sensor verfügbar, daher gibt es keine Schätzung.",
+      "stopped": "Es wird nichts aufgezeichnet. Das Schließen dieses Fensters beendet die Überwachung nicht -- nur Überwachung stoppen oder Beenden tut das.",
+      "unavailable": "Der Hintergrund-Monitor läuft nicht. Wählen Sie Überwachung starten, um ihn wieder zu starten."
+    },
+    "startMonitoring": "Überwachung starten",
+    "stopMonitoring": "Überwachung stoppen",
+    "costWithheld": "Kosten werden nicht angezeigt, solange die Schätzung unvollständig ist"
   },
   "chart": {
     "title": "Live-Leistung",
@@ -72,16 +96,26 @@
     "retention": "Aufbewahrung der Rohdaten",
     "retentionDays": "Tage",
     "retentionHelp": "15-Minuten-Energiesummen und der Kostenverlauf werden unabhängig von dieser Einstellung unbegrenzt aufbewahrt; nur die einzelnen Rohmesswerte werden bereinigt.",
-    "elevation": "Erhöhte Rechte",
-    "elevationDescription": "CPU-Paketleistung erfordert auf diesem Rechner Administratorrechte. WattScope führt niemals die gesamte Oberfläche erhöht aus -- nur der kleine Hintergrund-Messprozess startet nach Ihrer ausdrücklichen Bestätigung und einer echten Windows-Administratorabfrage erhöht neu.",
-    "restartElevated": "Messprozess als Administrator neu starten",
     "measured": "Gemessen",
     "assumption": "Von Ihnen festgelegte Annahme -- keine Messung",
     "save": "Speichern",
     "saved": "Gespeichert",
     "invalidPrice": "Bitte einen nicht-negativen Preis eingeben.",
     "invalidEfficiency": "Der Netzteil-Wirkungsgrad muss zwischen 1 % und 100 % liegen.",
-    "invalidInterval": "Das Intervall muss mindestens 250 ms betragen."
+    "invalidInterval": "Das Intervall muss mindestens 250 ms betragen.",
+    "background": {
+      "title": "Hintergrundüberwachung",
+      "description": "Beim Schließen dieses Fensters läuft WattScope im Infobereich weiter und die Überwachung geht weiter. WattScope läuft nur, solange Sie es gestartet haben; es startet nicht mit Windows.",
+      "exit": "WattScope beenden",
+      "exitHelp": "Beendet die Überwachung, speichert die Sitzung und schließt WattScope vollständig."
+    },
+    "administrator": {
+      "title": "Administrator",
+      "description": "Auf manchen Rechnern lässt sich die CPU-Leistung nur lesen, wenn WattScope als Administrator läuft. WattScope erhöht seine Rechte nie selbst: Für vollständige CPU-Überwachung schließen Sie es und starten es manuell mit Als Administrator ausführen.",
+      "running": "Läuft als Administrator",
+      "notRunning": "Läuft nicht als Administrator"
+    },
+    "intervalHelp": "Eine Änderung des Intervalls setzt dieselbe Sitzung fort; eine kurze Lücke wird erfasst und es wird keine Energie dafür erfunden."
   },
   "common": {
     "loading": "Wird geladen...",

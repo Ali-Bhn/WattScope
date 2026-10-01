@@ -1,13 +1,8 @@
-using System.Globalization;
-using System.Text.Json;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using WattScope.Core.Discovery;
 using WattScope.Core.Energy;
-using WattScope.Core.Estimation;
-using WattScope.Core.Monitoring;
-using WattScope.Core.Pricing;
-using WattScope.Core.Reporting;
 using WattScope.Core.Sampling;
 using WattScope.Core.Sensors;
 using WattScope.Probe.Serve;
@@ -17,12 +12,20 @@ namespace WattScope.Probe.Commands;
 
 /// <summary>
 /// Machine-readable counterpart of --record for the desktop app's native
-/// sidecar (Part I, docs/ARCHITECTURE.md "Data flow (--serve)"): the same
-/// discovery -> PowerSampleBuilder -> EnergyMonitor -> SamplingEngine
-/// pipeline as --record, reused rather than duplicated, but speaking
-/// newline-delimited JSON on stdin/stdout instead of printing text.
-/// Exactly one process may record at a time (the same MonitorLock --record
-/// uses), so a --serve and a --record can never both write.
+/// sidecar (docs/ARCHITECTURE.md, "Process model"): the same discovery ->
+/// PowerSampleBuilder -> EnergyMonitor -> SamplingEngine pipeline as
+/// --record, but speaking newline-delimited JSON on stdin/stdout.
+///
+/// The process lifetime and the monitoring lifetime are separate things
+/// (Milestone 004). The process is the sidecar's owner relationship with the
+/// desktop host; <see cref="MonitoringController"/> decides whether a
+/// session is being recorded right now. Exactly one process may record into
+/// a database (<see cref="MonitorLock"/>), and exactly one session may be
+/// Active (enforced by the database itself).
+///
+/// The process exits when: a "shutdown" request arrives, stdin closes (the
+/// host died -- so a sidecar can never outlive its host as an orphan), or
+/// Ctrl+C / SIGTERM is received.
 /// </summary>
 public static class ServeCommand
 {
@@ -35,7 +38,18 @@ public static class ServeCommand
         CancellationToken cancellationToken)
     {
         var dbPath = options.DatabasePath ?? SqliteEnergyStore.DefaultDatabasePath;
-        using var monitorLock = MonitorLock.TryAcquire(dbPath);
+        // Other WattScope processes (e.g. a `--sessions` CLI call doing crash
+        // recovery) hold the lock for a moment; a *starting* recorder must not
+        // mistake that for "another recorder owns this database", because the
+        // host treats exit code 3 as final. Retry briefly before concluding it.
+        MonitorLock? monitorLock = null;
+        for (var attempt = 0; attempt < 15 && monitorLock is null; attempt++)
+        {
+            monitorLock = MonitorLock.TryAcquire(dbPath);
+            if (monitorLock is null)
+                await Task.Delay(200, cancellationToken).ConfigureAwait(false);
+        }
+        using var lockHolder = monitorLock;
         if (monitorLock is null)
         {
             ServeProtocol.WriteLine(new StatusMessage { State = "error", Message = $"Another WattScope recording is already writing to {dbPath}." });
@@ -43,13 +57,11 @@ public static class ServeCommand
         }
 
         // Two connections to the same WAL-mode database: one owned exclusively
-        // by the recording monitor (writes every flush), one for the
-        // request/response loop's reads and settings writes. This is exactly
-        // the already-supported pattern of a separate --summary/--set-price
-        // process reading/writing while --record holds the lock
-        // (docs/STORAGE.md) -- just both ends alive in one process instead of
-        // two. SqliteEnergyStore is documented as not thread-safe, so each
-        // connection is touched by exactly one loop/thread.
+        // by the monitoring controller (writes every flush), one for the
+        // request/response loop's reads and settings writes -- the already
+        // supported pattern of a separate --summary/--set-price process
+        // alongside --record (docs/STORAGE.md). SqliteEnergyStore is not
+        // thread-safe, so each connection is used by exactly one logical owner.
         using var recordStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
         using var queryStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
         var logger = loggerFactory.CreateLogger("WattScope.Probe.Serve");
@@ -66,270 +78,118 @@ public static class ServeCommand
         recordStore.PruneRawSamples(DateTimeOffset.UtcNow);
 
         var builder = new PowerSampleBuilder(snapshot.PowerClassification);
-        var interval = TimeSpan.FromMilliseconds(options.IntervalMilliseconds);
-        var monitor = new EnergyMonitor(recordStore,
-            new EnergyMonitorOptions { Integration = IntegrationOptions.ForSamplingInterval(interval) },
-            logger: loggerFactory.CreateLogger<EnergyMonitor>(),
-            priceScheduleProvider: recordStore.GetPriceSchedule);
-
-        MonitoringSession session;
-        try
-        {
-            session = options.Resume
-                ? monitor.Resume(options.ResumeSessionId ?? recordStore.GetLatestSession()?.Id
-                    ?? throw new InvalidOperationException("There is no session to resume."), builder.Bindings)
-                : monitor.Start(builder.Bindings, recordStore.GetEstimationSettings(), snapshot.OperatingSystem.IsElevated, appVersion);
-        }
-        catch (InvalidOperationException ex)
-        {
-            ServeProtocol.WriteLine(new StatusMessage { State = "error", Message = ex.Message });
-            return 1;
-        }
-
-        ServeProtocol.WriteLine(new StatusMessage
-        {
-            State = "recording",
-            SessionId = session.Id,
-            Elevated = snapshot.OperatingSystem.IsElevated,
-            CpuAvailable = builder.Bindings.Any(b => b.Channel == EnergyChannel.CpuPackage),
-            GpuAvailable = builder.Bindings.Any(b => b.Channel == EnergyChannel.GpuBoard)
-        });
+        var source = new ProviderSampleSource(providers, builder, loggerFactory);
+        await using var controller = new MonitoringController(
+            recordStore, source, builder.Bindings,
+            new MonitoringControllerOptions
+            {
+                Elevated = snapshot.OperatingSystem.IsElevated,
+                CpuAvailable = builder.Bindings.Any(b => b.Channel == EnergyChannel.CpuPackage),
+                GpuAvailable = builder.Bindings.Any(b => b.Channel == EnergyChannel.GpuBoard),
+                AppVersion = appVersion
+            },
+            ServeProtocol.WriteLine, logger);
 
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        // Must run on its own thread, not just be an un-awaited async call:
-        // Console.In.ReadLineAsync does not reliably yield control back to
-        // this method before it has a line to return, which would otherwise
-        // starve the sampling loop below of any chance to run at all.
-        var requestLoop = Task.Run(() => RunRequestLoopAsync(queryStore, runCts, logger), CancellationToken.None);
+        var processor = new ServeRequestProcessor(queryStore, controller, () => runCts.Cancel(), logger);
 
+        // Must run on its own thread, not as a plain un-awaited async call:
+        // Console.In.ReadLineAsync does not reliably yield control back before
+        // it has a line to return, which would starve everything else.
+        var requestLoop = Task.Run(() => RunRequestLoopAsync(processor, runCts, logger), CancellationToken.None);
+
+        // One process-level subscription, forwarded to whatever run exists.
+        // Idle (not monitoring) has no session to protect, so nothing to do.
         PowerModeChangedEventHandler powerHandler = (_, e) =>
         {
             if (e.Mode == PowerModes.Suspend)
-            {
-                monitor.OnSuspend();
-                ServeProtocol.WriteLine(new StatusMessage { State = "suspended", SessionId = session.Id });
-            }
+                controller.OnSuspend();
             else if (e.Mode == PowerModes.Resume)
-            {
-                monitor.OnResume();
-                ServeProtocol.WriteLine(new StatusMessage { State = "resumed", SessionId = session.Id });
-            }
+                controller.OnResume();
         };
         SystemEvents.PowerModeChanged += powerHandler;
 
-        // Fetched once, like --record's own tick display: the tick stream's
-        // cost figure is explicitly an approximate live display (see
-        // TickMessage.SessionCostApprox), not a source of new DB polling.
-        var displayPrices = recordStore.GetPriceSchedule();
-        var engine = new SamplingEngine(providers, loggerFactory.CreateLogger<SamplingEngine>());
-        var samplingOptions = new SamplingOptions { Interval = interval, Duration = null };
-
         try
         {
-            await foreach (var tick in engine.RunAsync(samplingOptions, runCts.Token))
+            if (options.Paused)
             {
-                var sample = builder.Build(tick);
-                monitor.OnSample(sample);
-                EmitTick(session, tick, sample, monitor.RunTotals, displayPrices, snapshot.OperatingSystem.IsElevated);
+                ServeProtocol.WriteLine(new StatusMessage
+                {
+                    State = "idle",
+                    Elevated = snapshot.OperatingSystem.IsElevated,
+                    CpuAvailable = builder.Bindings.Any(b => b.Channel == EnergyChannel.CpuPackage),
+                    GpuAvailable = builder.Bindings.Any(b => b.Channel == EnergyChannel.GpuBoard)
+                });
             }
+            else
+            {
+                try
+                {
+                    // An explicit --interval wins for this start; otherwise the stored setting is used.
+                    int? interval = options.IntervalMilliseconds != SqliteEnergyStore.DefaultMonitoringIntervalMs ? options.IntervalMilliseconds : null;
+                    await controller.StartAsync(options.Resume, options.ResumeSessionId, interval).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or ArgumentOutOfRangeException)
+                {
+                    // Already reported as an "error" status by the controller; stay up, idle, so the UI can show why and retry.
+                    logger.LogWarning(ex, "Initial monitoring start failed; staying idle.");
+                }
+            }
+
+            await Task.Delay(Timeout.Infinite, runCts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // Normal stop: Ctrl+C, SIGTERM, or a "shutdown" request.
+            // Normal exit: shutdown request, stdin closed, Ctrl+C or SIGTERM.
         }
         finally
         {
             SystemEvents.PowerModeChanged -= powerHandler;
-            var stopped = monitor.Stop("Stopped (--serve)");
-            ServeProtocol.WriteLine(new StatusMessage
-            {
-                State = "stopped",
-                SessionId = session.Id,
-                Message = stopped ? null : "The session could not be fully saved/closed; it will be recovered as interrupted on the next start."
-            });
+            await controller.StopAsync("Stopped (--serve exiting)").ConfigureAwait(false);
+            ServeProtocol.WriteLine(new StatusMessage { State = "exiting" });
         }
 
         runCts.Cancel();
-        await requestLoop;
+        await Task.WhenAny(requestLoop, Task.Delay(TimeSpan.FromSeconds(1))).ConfigureAwait(false);
         return 0;
     }
 
-    private static void EmitTick(MonitoringSession session, SamplingTick tick, PowerSample sample, EnergyTotals runTotals, ElectricityPriceSchedule prices, bool elevated)
+    /// <summary>Reads one JSON request per stdin line until stdin closes or shutdown is requested; never throws past its own boundary.</summary>
+    private static async Task RunRequestLoopAsync(ServeRequestProcessor processor, CancellationTokenSource runCts, ILogger logger)
     {
-        var estimation = session.Estimation;
-        var wall = WallPowerEstimator.EstimateWatts(sample, estimation);
-        var price = prices.PriceAt(sample.UtcTime);
-
-        ServeProtocol.WriteLine(new TickMessage
-        {
-            SessionId = session.Id,
-            Sequence = tick.Sequence,
-            Utc = sample.UtcTime,
-            CpuWatts = sample.CpuPackage.IsValid ? sample.CpuPackage.Watts : null,
-            CpuState = sample.CpuPackage.State,
-            GpuWatts = sample.GpuBoard.IsValid ? sample.GpuBoard.Watts : null,
-            GpuState = sample.GpuBoard.State,
-            OtherComponentsWatts = estimation.OtherComponentsWatts,
-            EstimatedTotalWatts = wall.Value,
-            EstimateCompleteness = wall.Completeness,
-            SessionSeconds = runTotals.MonitoredSeconds,
-            SessionKwh = (double)EnergyUnits.ToKwh(runTotals.EstimatedCompleteJoules),
-            SessionCostApprox = price is not null ? CostCalculator.Cost(runTotals.EstimatedCompleteJoules, price.PricePerKwh) : null,
-            Currency = prices.Currency,
-            Elevated = elevated
-        });
-    }
-
-    /// <summary>Reads one JSON request per stdin line until it closes or "shutdown" is received; never throws past its own boundary.</summary>
-    private static async Task RunRequestLoopAsync(SqliteEnergyStore store, CancellationTokenSource runCts, ILogger logger)
-    {
-        string? line;
         try
         {
+            string? line;
             while ((line = await Console.In.ReadLineAsync(runCts.Token).ConfigureAwait(false)) is not null)
             {
-                // Defensive: some hosts/encodings prepend a UTF-8 BOM (U+FEFF)
-                // to the very first write on a stream; strip it rather than
-                // fail the first request a sidecar host happens to send.
-                line = line.TrimStart('﻿');
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                ServeRequest request;
-                try
-                {
-                    request = JsonSerializer.Deserialize<ServeRequest>(line, ServeProtocol.JsonOptions)
-                        ?? throw new JsonException("empty request");
-                }
-                catch (JsonException ex)
-                {
-                    ServeProtocol.WriteLine(ServeResponse.Failure(null, $"Malformed request: {ex.Message}"));
-                    continue;
-                }
-
-                try
-                {
-                    var data = HandleRequest(request, store, runCts);
-                    ServeProtocol.WriteLine(ServeResponse.Success(request.Id, data));
-                }
-                catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or ArgumentOutOfRangeException)
-                {
-                    // Expected, user-facing failures (bad input, unknown session, invalid setting): reported, not logged as bugs.
-                    ServeProtocol.WriteLine(ServeResponse.Failure(request.Id, ex.Message));
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Unhandled error processing --serve request {Cmd}", request.Cmd);
-                    ServeProtocol.WriteLine(ServeResponse.Failure(request.Id, "Internal error; see the log for detail."));
-                }
+                var response = await processor.ProcessLineAsync(line).ConfigureAwait(false);
+                if (response is not null)
+                    ServeProtocol.WriteLine(response);
             }
         }
         catch (OperationCanceledException)
         {
             // Shutting down.
         }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "The --serve request loop failed.");
+        }
         finally
         {
-            // stdin closed (the parent process disappeared) is itself a
-            // reason to stop recording, not just the request loop.
+            // stdin closed (the host process is gone) is itself a reason to
+            // stop: a sidecar must never outlive its host as an orphan.
             runCts.Cancel();
         }
     }
 
-    private static object? HandleRequest(ServeRequest request, SqliteEnergyStore store, CancellationTokenSource runCts) => request.Cmd switch
+    private sealed class ProviderSampleSource(IReadOnlyList<ISensorProvider> providers, PowerSampleBuilder builder, ILoggerFactory loggerFactory) : ISampleSource
     {
-        "get_sessions" => store.ListSessions(50)
-            .Select(s => new { s.Id, s.StartedUtc, s.EndedUtc, s.Status, s.EndReason, Totals = EnergyReportBuilder.Sum(store.GetSessionBuckets(s.Id)) })
-            .ToList(),
-
-        "get_summary" => BuildSummaryResponse(request, store),
-
-        "get_prices" => store.GetPriceSchedule().Entries,
-
-        "set_price" => SetPrice(request, store),
-
-        "get_estimation" => store.GetEstimationSettings(),
-
-        "set_estimation" => SetEstimation(request, store),
-
-        "get_retention" => new { days = store.GetRawRetentionDays() },
-
-        "set_retention" => SetRetention(request, store),
-
-        "get_db_info" => store.GetStatistics(),
-
-        "shutdown" => Shutdown(runCts),
-
-        _ => throw new ArgumentException($"Unknown command '{request.Cmd}'.")
-    };
-
-    private static object BuildSummaryResponse(ServeRequest request, SqliteEnergyStore store)
-    {
-        var prices = store.GetPriceSchedule();
-        var tz = TimeZoneInfo.Local;
-
-        if (request.Day is { } day)
+        public async IAsyncEnumerable<SampleEnvelope> RunAsync(TimeSpan interval, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            var (start, end) = ReportPeriods.LocalDay(day, tz);
-            var (report, _) = DatabaseCommands.BuildPeriodReport($"Day {day:yyyy-MM-dd}", start, end, store, prices, tz, daily: false);
-            return new { report };
+            var engine = new SamplingEngine(providers, loggerFactory.CreateLogger<SamplingEngine>());
+            await foreach (var tick in engine.RunAsync(new SamplingOptions { Interval = interval, Duration = null }, cancellationToken).ConfigureAwait(false))
+                yield return new SampleEnvelope(tick.Sequence, builder.Build(tick), tick.ReadDuration);
         }
-
-        if (request.Month is { } monthText)
-        {
-            if (!DateOnly.TryParseExact(monthText + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
-                throw new ArgumentException("month must be 'yyyy-MM'.");
-            var (start, end) = ReportPeriods.LocalMonth(parsed.Year, parsed.Month, tz);
-            var (report, daily) = DatabaseCommands.BuildPeriodReport($"Month {parsed.Year:0000}-{parsed.Month:00}", start, end, store, prices, tz, daily: true);
-            return new { report, daily };
-        }
-
-        var session = request.SessionId is { } id ? store.GetSession(id) : store.GetLatestSession();
-        if (session is null)
-            throw new ArgumentException(request.SessionId is { } missing ? $"Session {missing} does not exist." : "No sessions recorded yet.");
-        return new { report = DatabaseCommands.BuildSessionReport(store, session, prices), session };
-    }
-
-    private static ElectricityPrice SetPrice(ServeRequest request, SqliteEnergyStore store)
-    {
-        if (request.PricePerKwh is not { } pricePerKwh)
-            throw new ArgumentException("pricePerKwh is required.");
-        var entry = new ElectricityPrice
-        {
-            EffectiveFromUtc = request.EffectiveFrom ?? DateTimeOffset.UtcNow,
-            PricePerKwh = pricePerKwh,
-            Currency = request.Currency ?? ElectricityPriceSchedule.DefaultCurrency
-        };
-        store.AddPrice(entry, DateTimeOffset.UtcNow);
-        return entry;
-    }
-
-    private static EstimationSettings SetEstimation(ServeRequest request, SqliteEnergyStore store)
-    {
-        var current = store.GetEstimationSettings();
-        var updated = current with
-        {
-            OtherComponentsWatts = request.OtherWatts ?? current.OtherComponentsWatts,
-            PsuEfficiency = request.PsuEfficiency ?? current.PsuEfficiency,
-            IncludeCpuPackage = request.IncludeCpu ?? current.IncludeCpuPackage,
-            IncludeGpuBoard = request.IncludeGpu ?? current.IncludeGpuBoard
-        };
-        store.SaveEstimationSettings(updated, DateTimeOffset.UtcNow);
-        return updated;
-    }
-
-    private static object SetRetention(ServeRequest request, SqliteEnergyStore store)
-    {
-        if (request.RetentionDays is not { } days)
-            throw new ArgumentException("retentionDays is required.");
-        store.SetRawRetentionDays(days);
-        var pruned = store.PruneRawSamples(DateTimeOffset.UtcNow);
-        return new { days, pruned };
-    }
-
-    private static object Shutdown(CancellationTokenSource runCts)
-    {
-        runCts.Cancel();
-        return new { stopping = true };
     }
 }

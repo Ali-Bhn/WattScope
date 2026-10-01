@@ -1,7 +1,7 @@
 # Project State
 
-Last updated: 2026-10-01, after implementing and validating Milestone 003
-(sub-bucket electricity pricing and the first desktop application).
+Last updated: 2026-10-01, after implementing and validating Milestone 004
+(tray, single instance, monitoring/sidecar lifecycle) on top of Milestone 003.
 
 ## Status
 
@@ -12,9 +12,158 @@ Last updated: 2026-10-01, after implementing and validating Milestone 003
   limitations listed in the next section (item 5 has since been fixed by
   Milestone 003 Part A -- see the note there).
 - **Milestone 003** -- Desktop Application & Live Dashboard: **implemented
-  and validated** -- see the Milestone 003 section below for what was
-  verified, how, and the known limitations.
+  and validated** -- see the Milestone 003 section below. Two of its
+  limitations were changed by Milestone 004 (the "restart elevated" action was
+  removed; interval changes no longer restart the process) -- see the notes
+  there.
+- **Milestone 004** -- Tray, Single Instance & Monitoring Lifecycle:
+  **implemented and validated**, with a short list of items that still need a
+  human at the machine and are marked **UNVERIFIED** (real sleep/resume, the
+  native tray menu, logoff/shutdown, an Administrator launch, installer
+  install/uninstall). Automatic Windows startup and a privileged sensor
+  helper/service are intentionally deferred.
 
+# Milestone 004
+
+Architecture: `docs/ARCHITECTURE.md` ("Process model (Milestone 004)",
+"Privilege model"). Manual procedures: `docs/MANUAL_VALIDATION.md`.
+
+## Product decision (intentional scope, not an implementation failure)
+
+Automatic Windows startup and a least-privilege privileged sensor
+helper/service are intentionally deferred. WattScope currently runs only when
+explicitly launched by the user. Complete CPU monitoring on hardware requiring
+privileged sensor access may require the user to explicitly launch WattScope
+with Administrator privileges. Running the whole app elevated is an accepted
+**interim** limitation of this development-stage version, only when the user
+chooses it. Nothing for auto-start, a Windows Service, a privileged helper,
+privileged IPC or automatic elevation was built, and no gaming analytics.
+
+## Retained from the pre-correction work / removed because of the scope change
+
+There was no uncommitted M004 work when the scope was corrected (`git status`
+was clean at `56fd6aa`), so nothing was reverted. The one piece of **committed**
+Milestone 003 code that conflicted with the revised scope was removed: the
+`restart_sidecar_elevated` command and Settings button (it elevated only the
+sidecar and left an untracked second recorder outside the host's control,
+which the one-sidecar/one-session rules forbid). `restart_sidecar` was also
+removed; changing the interval now continues the same session inside the
+sidecar (`set_monitoring_interval`).
+
+## What was built
+
+| Area | Implementation |
+|---|---|
+| Tray | Native icon with tooltip; menu: state, estimated power, session energy/cost (read-only lines refreshed at most every 5 s), Open, Start/Stop monitoring (enabled by state), Settings, Exit. Left-click opens. Strings in EN/DE/FA (`labels.rs`), following the UI language |
+| Close vs Exit | Window X hides to the tray; monitoring continues. Exit (tray, or Settings -> *Exit WattScope*) asks the sidecar to stop, waits up to 5 s, then kills the child the host holds the handle of |
+| Single instance | `tauri-plugin-single-instance`; a second launch shows the first window |
+| Monitoring lifecycle | `MonitoringController` in the sidecar: idempotent start/stop, independent of the process, window and React; `get_monitoring_state` lets a reopened UI attach (includes the last tick); one run at a time |
+| Hidden window cost | The host feeds the tray from every tick but forwards ticks to the webview only while visible; the chart now draws strictly on demand |
+| Sidecar lifecycle | One owned child by handle + spawn generation; bounded restart (1/2/4 s back-off, max 3 per 60 s, then give up and report); exit code 3 (lock held) never retried; sidecar exits when its stdin closes (no orphan when the host dies); never kills by name or PID; sidecar retries the recording lock for ~3 s so a transient CLI holder is not mistaken for another recorder |
+| Session ownership | Schema v3: `ux_session_single_active` (one Active session per database); `ActiveSessionExistsException`; v3 migration repairs databases that already have several Active rows |
+| Suspend/resume | `EnergyMonitor.OnResume` is now a no-op unless a suspend preceded it (duplicate/spurious Resume no longer cuts a second gap); duplicate Suspend already safe; elapsed-time fallback retained and tested |
+| Partial-monitoring UX | Dashboard banner: Complete / Partial / Sensor unavailable / Monitoring stopped / Monitor not running (+ Starting) with a one-line reason; **no session cost unless the session estimate is Complete** (the old tick cost showed `0` for a partial session -- fixed); Settings shows Administrator state read-only |
+| Localization | New keys in EN/DE/FA; locale parity tests |
+| Packaging | MSI 36.07 MiB and NSIS 26.99 MiB build; no service/startup entry added |
+
+## Verification
+
+| Requirement | How verified | Result |
+|---|---|---|
+| Existing M001-M003 tests intact | `dotnet test WattScope.slnx` | **187 passed** (Core 105, Storage 26, Hardware 11, Probe 45), 0 failed; was 133 at the end of M003. 0 warnings |
+| New .NET tests | `WattScope.Probe.Tests` (new, 45): controller start/stop idempotency, 12 concurrent starts -> 1 session, restart -> new session, resume continues same session with a Paused gap, orphan recovery, interval validation, snapshot attach, suspend/resume gap + no energy across sleep, duplicate suspend/resume -> 1 gap, resume without suspend -> no gap, missed-suspend elapsed-time fallback (both clock cases), sampling failure -> idle + closed session, partial session never shows a cost or a zero CPU, request processor: malformed/oversized/BOM/unknown/invalid parameters, start/stop via protocol, interval change keeps the session. `Storage.Tests` (+6): second Active refused, two connections racing -> one, reopen conflict, v3 migration repairs duplicate Actives, interval persistence. `Core.Tests` (+3): repeated suspend/resume, resume without suspend, two separate sleeps | pass |
+| Rust unit tests | `cargo test`: restart policy (back-off, bound, window ageing, lock-held never retried, user reset), spawn arguments, tray labels in 3 languages | **12 passed** |
+| Frontend | `npm test` (vitest) 30 passed (monitoring state machine, cost withheld, locale key parity/translation/Persian script); `npm run typecheck` clean; `npm run build` clean | pass |
+| Tauri build | `npm run tauri build` | MSI + NSIS built |
+| **Real packaged-app lifecycle** | `desktop/scripts/validate-lifecycle.ps1` against the final `wattscope.exe`: 24 checks | **24 / 24 passed** -- one host + one sidecar after launch; a second launch exits by itself and changes nothing; **8 simultaneous launches** create no extra host/sidecar/session; window X hides it (window gone) while host and the *same* sidecar keep running and the session record keeps advancing; launching again while hidden shows the existing window and the same single session continues; killing the sidecar -> a new one appears, crashed session recovered, one Active; 4 injected crashes -> restarts stop (bounded), host stays alive; relaunch works; killing the host -> the sidecar exits by itself within seconds and the session is closed `Stopped` (not Active/Interrupted) |
+| **Real UI actions** (Windows UI Automation against the live window) | Stop monitoring -> session `Stopped`, banner "Monitoring stopped"; Start monitoring -> a new session, exactly one Active; **Exit WattScope** -> host, sidecar and WebView processes all gone, session `Stopped` | pass |
+| Partial monitoring shown honestly (real, unelevated, this machine) | Live accessibility tree of the dashboard: "Partial monitoring", the CPU-unavailable explanation, CPU `--` ("Not elevated"), GPU 42.6 W, system 102.9 W "Partial (lower bound)"; ticks carry `cpuWatts: null`, `sessionCompleteness: partial`, `sessionCostApprox: null` | pass |
+| Persian RTL (real window screenshot) | Sidebar on the right, right-aligned text, mirrored controls, numbers/units/dates left-to-right inside Persian text | pass (visual) |
+
+### Bugs found by the real validation (and fixed)
+
+1. **Hidden-window CPU**: with the window hidden, WebView CPU only fell from
+   3.85 % to 3.15 % of a core. The chart's `requestAnimationFrame` loop
+   re-armed forever even with nothing to draw. Now drawing is strictly on
+   demand: visible **0.65 %**, hidden **0.03 %** (see measurements).
+2. **Lock hazard**: any CLI call that does crash recovery (`--sessions`)
+   briefly holds the recording lock; a sidecar starting at that instant would
+   exit with code 3, which the host treats as final. The sidecar now retries
+   for ~3 s before concluding another recorder owns the database.
+3. **Misleading cost**: the running session cost was computed from
+   complete-estimate energy only, so a partial session showed a cost of 0. It
+   is now withheld unless the session estimate is Complete.
+
+Two failures in the first runs of the validation script were *test* defects,
+not app defects (a helper posted `WM_CLOSE` to the single-instance plugin's own
+hidden window too; PowerShell 5.1 `.Count` on a single object) -- fixed in the
+script.
+
+## Background performance (packaged build, this machine, unelevated)
+
+`desktop/scripts/measure-background.ps1`, 60 s per phase after a 15 s settle,
+32 logical CPUs, 1 s sampling interval. CPU is % of **one** core (the machine
+column is that divided by 32). Single runs on a busy desktop; indicative.
+
+| | Before the chart fix | | After the chart fix | |
+|---|---|---|---|---|
+| | visible | hidden | visible | hidden |
+| Host (Tauri) | 0 | 0.05 | 0.08 | 0.05 |
+| WebView2 tree (7 procs) | 3.85 | 3.15 | **0.65** | **0.03** |
+| Sidecar (.NET) | 1.79 | 1.30 | 1.48 | 1.14 |
+| **Total CPU** | 5.64 | 4.50 | **2.21** | **1.22** (0.039 % of the machine) |
+| Working set (all 9 procs) | 475.8 MiB | 481.4 MiB | 469.3 MiB | 474.9 MiB |
+| Processes | 9 | 9 | 9 | 9 |
+
+Sidecar latency (standalone `--serve`, 44 samples): provider read avg
+**86.7 ms**, max 125 ms (LibreHardwareMonitor refresh, unchanged from M002);
+database flush avg **0.66 ms**, max 1.7 ms; 0 gaps. Hiding the window does not
+reduce memory (the WebView stays alive); it removes the CPU. **Gaming/FPS impact
+was not measured** (no controlled game benchmark was run) -- no claim is made.
+
+## UNVERIFIED (needs a person at the machine; procedures in `docs/MANUAL_VALIDATION.md`)
+
+- **Real sleep/resume.** The logic and the event/fallback state machine are
+  automatically tested with synthetic samples, but the real
+  `SystemEvents.PowerModeChanged` path (and whether this PC's sleep reaches it,
+  or uses Modern Standby) has not been exercised -- the PC was deliberately not
+  put to sleep. Awaiting the manual procedure's results.
+- **The native tray icon and menu** (icon visible, tooltip, menu item states,
+  Start/Stop/Settings/Exit clicks, menu language incl. Persian rendering).
+  Everything behind the menu is exercised (the same request path is used by the
+  UI's Start/Stop, and *Exit* shares `graceful_exit` with Settings' Exit, which
+  was verified), but the native menu itself could not be driven automatically.
+- **Windows logoff / shutdown / restart.** Not tested. Design relies on
+  `RunEvent::Exit` (2 s bound), the sidecar noticing stdin closing, and
+  Milestone 002 crash recovery as the final net; whether Windows delivers the
+  teardown event to a hidden-in-tray Tauri app was not verified.
+- **Launch as Administrator**, and the dashboard showing **Complete**
+  monitoring with a cost through the new UI. (Milestone 002 validated complete
+  elevated recording through the CLI; the new state machine for "complete" is
+  unit-tested; the combination was not run elevated in this session.)
+- **MSI / NSIS install, upgrade and uninstall** (the packages build and the
+  built exe was validated; installing them was not).
+- Real validation sessions #3-#16 now exist in the default database
+  (`%LOCALAPPDATA%\WattScope\wattscope.db`) from these runs (several are
+  `Interrupted` by the deliberate crash/kill tests). History is never deleted
+  by uninstall.
+
+## Known limitations (Milestone 004)
+
+1. No auto-start, no privileged helper/service: CPU power needs the user to
+   launch WattScope as Administrator on this machine (see decision above).
+2. The tick cost on the dashboard is an approximate live figure at the price in
+   effect when the run started; the exact, split-priced cost is in Reports.
+3. A hidden window keeps its WebView memory (~350 MiB across 7 processes); only
+   its CPU is removed. Fully destroying/recreating the webview on hide would
+   save memory at the cost of a slower reopen and was not done.
+4. The host stops forwarding ticks to a hidden window, so the live chart has a
+   visual jump over the hidden period when reopened (data is not lost; the
+   database has every sample).
+5. No automated test drives the native tray; no automated test of a real OS
+   suspend (see UNVERIFIED).
+6. `Console.In.ReadLineAsync`'s non-yielding behaviour (found in M003) is
+   still handled by running the request loop on its own thread.
 # Milestone 003
 
 Rules for Part A: `docs/ENERGY_MODEL.md` section 4. Architecture for Part
@@ -72,6 +221,8 @@ output capture silently losing events) -- worth recording because it is
 exactly the kind of bug code review alone would not have caught.
 
 ## Known limitations (Milestone 003)
+
+> **Superseded by Milestone 004:** items 1 and 2 below describe the M003 "restart as administrator" action and the interval-change restart. Both were removed/changed in M004 (see above): the whole app is simply launched as Administrator by the user, and interval changes continue the same session.
 
 1. **No privileged broker service.** The sidecar runs unelevated by
    default; CPU package power is unavailable on machines (like this one)

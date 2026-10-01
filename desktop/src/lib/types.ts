@@ -34,6 +34,8 @@ export interface TickMessage {
   otherComponentsWatts: number;
   estimatedTotalWatts: number | null;
   estimateCompleteness: EstimateCompleteness;
+  /** Completeness of the whole session so far; a cost is only ever shown for a complete session. */
+  sessionCompleteness: EstimateCompleteness;
   sessionSeconds: number;
   sessionKwh: number;
   sessionCostApprox: number | null;
@@ -43,7 +45,7 @@ export interface TickMessage {
 
 export interface StatusMessage {
   type: "status";
-  state: "recording" | "recovered" | "suspended" | "resumed" | "stopped" | "error";
+  state: "idle" | "recording" | "recovered" | "suspended" | "resumed" | "stopped" | "exiting" | "restarting" | "failed" | "error";
   sessionId?: number | null;
   elevated?: boolean | null;
   cpuAvailable?: boolean | null;
@@ -156,4 +158,16 @@ export interface SummaryResponse {
   report: EnergyReport;
   daily?: DailyEnergy[];
   session?: MonitoringSession;
+}
+
+/** What the sidecar's MonitoringController reports; lets a (re)opened UI attach to the running session. */
+export interface MonitoringSnapshot {
+  state: "idle" | "recording";
+  sessionId: number | null;
+  elevated: boolean;
+  cpuAvailable: boolean;
+  gpuAvailable: boolean;
+  intervalMs: number;
+  lastTick: TickMessage | null;
+  alreadyRunning: boolean;
 }

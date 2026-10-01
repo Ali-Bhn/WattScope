@@ -1,4 +1,4 @@
-﻿# WattScope
+# WattScope
 
 A Windows desktop application for monitoring computer energy consumption,
 estimating electricity costs, and analyzing gaming sessions.
@@ -6,7 +6,8 @@ estimating electricity costs, and analyzing gaming sessions.
 **Implemented so far:** Milestone 001 (hardware discovery and power-sensor
 validation), Milestone 002 (energy calculation, electricity cost, SQLite
 persistence), and Milestone 003 (sub-bucket electricity pricing and the
-first desktop application, `desktop/`) -- see `docs/PROJECT_STATE.md`.
+first desktop application, `desktop/`), and Milestone 004 (tray, single
+instance, monitoring/sidecar lifecycle) -- see `docs/PROJECT_STATE.md`.
 Gaming analytics is not implemented yet.
 
 ## Projects
@@ -97,10 +98,20 @@ Tauri bundles whatever binary is already sitting in `src-tauri/binaries/`,
 it does not invoke `dotnet` itself.
 
 The app is local-first: no cloud dependency, no accounts, no telemetry, no
-subscriptions. It runs the sidecar unelevated by default (GPU power works;
-CPU package power shows an explicit "unavailable, not elevated" state rather
-than a substituted zero on machines where it needs elevation -- see
-`docs/SENSOR_CONTRACT.md` section 4). Settings has an explicit "Restart
-monitor as administrator" action for a real Windows UAC prompt when complete
-CPU data is wanted; see `docs/ARCHITECTURE.md` ("Privilege model") for what
-that does and its documented limitation.
+subscriptions. It runs only when you launch it -- it does **not** start with
+Windows. Closing the window hides WattScope to the system tray and monitoring
+keeps running; use the tray's *Exit WattScope* (or Settings -> *Exit WattScope*)
+to stop it. Launching it a second time just shows the existing window.
+
+It never elevates itself. Launched normally, GPU power works and CPU package
+power shows an explicit "Partial monitoring" state (never a substituted 0 W,
+and no cost for an incomplete estimate) on machines where it needs elevation
+-- see `docs/SENSOR_CONTRACT.md` section 4. For complete CPU monitoring, launch
+`wattscope.exe` yourself with *Run as administrator*; that is an interim
+limitation, with automatic startup and a least-privilege privileged helper
+intentionally deferred (`docs/ARCHITECTURE.md`, "Privilege model").
+
+Lifecycle and performance checks against the real packaged app:
+`desktop/scripts/validate-lifecycle.ps1` and `desktop/scripts/measure-background.ps1`
+(both launch the real app and record real sessions). Procedures that need a
+person (sleep/resume, the tray menu, logoff) are in `docs/MANUAL_VALIDATION.md`.

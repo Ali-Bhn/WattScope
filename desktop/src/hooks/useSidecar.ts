@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { StatusMessage, TickMessage } from "@/lib/types";
+import { applyStatus, deriveQuality, type MonitoringQuality, type MonitoringView } from "@/lib/monitoring";
+import type { MonitoringSnapshot, StatusMessage, TickMessage } from "@/lib/types";
 
 export interface SidecarRequest {
   cmd: string;
@@ -27,47 +28,78 @@ export function useSidecarRequest() {
   }, []);
 }
 
-/** The sidecar's most recent lifecycle event (recording started, suspended, stopped, error, ...). */
-export function useSidecarStatus(): StatusMessage | null {
-  const [status, setStatus] = useState<StatusMessage | null>(null);
+function subscribe<T>(event: string, handler: (payload: T) => void): () => void {
+  let unlisten: UnlistenFn | undefined;
+  let cancelled = false;
+  listen<T>(event, (e) => handler(e.payload)).then((fn) => {
+    if (cancelled) fn();
+    else unlisten = fn;
+  });
+  return () => {
+    cancelled = true;
+    unlisten?.();
+  };
+}
 
-  useEffect(() => {
-    let unlisten: UnlistenFn | undefined;
-    let cancelled = false;
-    listen<StatusMessage>("sidecar-status", (event) => setStatus(event.payload)).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
-
-  return status;
+export interface MonitoringState {
+  quality: MonitoringQuality;
+  tick: TickMessage | null;
+  status: StatusMessage | null;
+  snapshot: MonitoringSnapshot | null;
+  start: () => Promise<void>;
+  stop: () => Promise<void>;
 }
 
 /**
- * The most recent sample, for live dashboard numbers that should re-render
- * every tick. The live chart does NOT use this -- it subscribes to the same
- * event itself and draws to a canvas imperatively, so one more open tab or
- * card never costs the chart an extra re-render (Part E/J).
+ * The UI's whole view of monitoring. It does not *own* monitoring -- the
+ * sidecar does, and keeps it running while the window is hidden or closed
+ * to the tray -- so this hook only attaches: it asks the sidecar for the
+ * current state on mount and whenever the window becomes visible again
+ * (the host stops forwarding ticks while hidden), then follows events.
+ * Reopening the dashboard therefore shows the same session, not a new one.
  */
-export function useLatestTick(): TickMessage | null {
-  const [tick, setTick] = useState<TickMessage | null>(null);
+export function useMonitoring(): MonitoringState {
+  const request = useSidecarRequest();
+  const [view, setView] = useState<MonitoringView>({ recording: false, monitorDown: false, lastTick: null });
+  const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [snapshot, setSnapshot] = useState<MonitoringSnapshot | null>(null);
+
+  const attach = useCallback(async () => {
+    try {
+      const s = await request<MonitoringSnapshot>({ cmd: "get_monitoring_state" });
+      setSnapshot(s);
+      setView({ recording: s.state === "recording", monitorDown: false, lastTick: s.lastTick });
+    } catch {
+      // The sidecar is not answering (starting, restarting or gone); events will say which.
+    }
+  }, [request]);
 
   useEffect(() => {
-    let unlisten: UnlistenFn | undefined;
-    let cancelled = false;
-    listen<TickMessage>("sidecar-tick", (event) => setTick(event.payload)).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
+    void attach();
+    const offTick = subscribe<TickMessage>("sidecar-tick", (tick) =>
+      setView((v) => ({ ...v, recording: true, monitorDown: false, lastTick: tick })),
+    );
+    const offStatus = subscribe<StatusMessage>("sidecar-status", (s) => {
+      setStatus(s);
+      setView((v) => applyStatus(v, s));
+      if (s.state === "recording" || s.state === "idle") void attach();
+    });
+    const offVisible = subscribe<boolean>("ui-visibility", (visible) => {
+      if (visible) void attach();
     });
     return () => {
-      cancelled = true;
-      unlisten?.();
+      offTick();
+      offStatus();
+      offVisible();
     };
-  }, []);
+  }, [attach]);
 
-  return tick;
+  const start = useCallback(async () => {
+    await request({ cmd: "start_monitoring" });
+  }, [request]);
+  const stop = useCallback(async () => {
+    await request({ cmd: "stop_monitoring" });
+  }, [request]);
+
+  return { quality: deriveQuality(view), tick: view.lastTick, status, snapshot, start, stop };
 }

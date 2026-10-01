@@ -212,14 +212,21 @@ public sealed class EnergyMonitor
         }
     }
 
+    /// <summary>
+    /// The OS resumed. Only meaningful after <see cref="OnSuspend"/>: Windows
+    /// can raise Resume more than once for one sleep, and a repeated Resume
+    /// must not cut a second gap out of normal, continuous sampling. If the
+    /// matching suspend notification was missed entirely, the integrator's
+    /// own elapsed-time checks (monotonic stall / clock discontinuity) still
+    /// detect the discontinuity and record the gap -- this method is the
+    /// precise path, not the only one.
+    /// </summary>
     public void OnResume()
     {
         lock (_gate)
         {
-            if (_session is null)
+            if (_session is null || !_suspended)
                 return;
-            // Break again in case the suspend notification was missed; the gap
-            // keeps the earliest start recorded.
             _integrator.BreakChain(GapReason.Suspend, detail: "Operating system suspend/resume.");
             _suspended = false;
             _lastFlushMonotonic = null;

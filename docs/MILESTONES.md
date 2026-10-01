@@ -83,10 +83,44 @@ Out of scope (per the brief): gaming analytics, Milestone 004.
 Status: **implemented** -- see `docs/PROJECT_STATE.md` for what was
 verified, build/test results, and known limitations.
 
+## Milestone 004 -- Tray, Single Instance & Monitoring Lifecycle
+
+Make the desktop app behave like a well-mannered background utility **while
+the user has it running**, without any auto-start or privileged component:
+
+1. System tray: icon, live status/power/session lines, Open, Start/Stop
+   monitoring, Settings, Exit. Closing the window hides it to the tray;
+   monitoring continues. Exit is explicit and stops everything cleanly.
+2. Single instance: a second launch shows the existing window and creates no
+   second sidecar, session or engine.
+3. Monitoring lifecycle decoupled from the window and the sidecar process
+   (`MonitoringController`): idempotent start/stop, the window attaches to the
+   running session, a hidden window receives no tick traffic.
+4. Sidecar lifecycle hardened: exactly one, owned by handle, bounded
+   crash-restart, no orphan if the host dies, never kills by name/PID.
+5. Session ownership enforced by the database (schema v3: one `Active`
+   session per database).
+6. Suspend/resume: precise event handling plus the elapsed-time fallback, one
+   gap per sleep, no energy across it.
+7. Honest partial-monitoring UX: Complete / Partial / Sensor unavailable /
+   Stopped / Monitor not running, with no cost shown for an incomplete estimate.
+8. Background performance measured (visible vs hidden in tray).
+9. EN/DE/FA for everything new, RTL verified.
+
+**Intentionally deferred (product decision, not a failure):** automatic
+Windows startup and a least-privilege privileged sensor helper/service.
+WattScope runs only when the user explicitly launches it; complete CPU
+monitoring on hardware needing privileged sensor access may require the
+user to launch it with Administrator privileges (an interim limitation).
+No Windows Service, privileged helper/IPC, auto-start registration,
+automatic elevation or gaming analytics were built.
+
+Status: **implemented** -- see `docs/PROJECT_STATE.md` for what was verified
+(and what is still UNVERIFIED, which needs a human at the machine).
 ## Later milestones (not started)
 
-Numbering and scope for milestones after 003 are not yet defined in this
+Numbering and scope for milestones after 004 are not yet defined in this
 repository. Items already identified as future work (see
-`docs/PROJECT_STATE.md`): a least-privilege elevated broker service so the
-sidecar never needs a user-triggered UAC restart to get complete CPU power,
-and gaming-session analytics.
+`docs/PROJECT_STATE.md`): Windows auto-start, a least-privilege privileged
+sensor helper/service so complete CPU monitoring does not require running the
+whole app as Administrator, and gaming-session analytics.

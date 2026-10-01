@@ -110,26 +110,36 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
         request.Estimation.Validate();
         using var transaction = _connection.BeginTransaction();
         long id;
-        using (var command = Command(transaction, """
-            INSERT INTO session (started_utc_ms, status, est_other_watts, est_psu_efficiency, est_include_cpu, est_include_gpu, process_elevated, app_version)
-            VALUES ($started, $status, $other, $eff, $cpu, $gpu, $elevated, $version)
-            RETURNING id;
-            """))
+        try
         {
-            command.Parameters.AddWithValue("$started", request.StartedUtc.ToUnixTimeMilliseconds());
-            command.Parameters.AddWithValue("$status", (int)SessionStatus.Active);
-            command.Parameters.AddWithValue("$other", request.Estimation.OtherComponentsWatts);
-            command.Parameters.AddWithValue("$eff", request.Estimation.PsuEfficiency);
-            command.Parameters.AddWithValue("$cpu", request.Estimation.IncludeCpuPackage);
-            command.Parameters.AddWithValue("$gpu", request.Estimation.IncludeGpuBoard);
-            command.Parameters.AddWithValue("$elevated", (object?)request.ProcessElevated ?? DBNull.Value);
-            command.Parameters.AddWithValue("$version", (object?)request.AppVersion ?? DBNull.Value);
-            id = Convert.ToInt64(command.ExecuteScalar());
+            using (var command = Command(transaction, """
+                INSERT INTO session (started_utc_ms, status, est_other_watts, est_psu_efficiency, est_include_cpu, est_include_gpu, process_elevated, app_version)
+                VALUES ($started, $status, $other, $eff, $cpu, $gpu, $elevated, $version)
+                RETURNING id;
+                """))
+            {
+                command.Parameters.AddWithValue("$started", request.StartedUtc.ToUnixTimeMilliseconds());
+                command.Parameters.AddWithValue("$status", (int)SessionStatus.Active);
+                command.Parameters.AddWithValue("$other", request.Estimation.OtherComponentsWatts);
+                command.Parameters.AddWithValue("$eff", request.Estimation.PsuEfficiency);
+                command.Parameters.AddWithValue("$cpu", request.Estimation.IncludeCpuPackage);
+                command.Parameters.AddWithValue("$gpu", request.Estimation.IncludeGpuBoard);
+                command.Parameters.AddWithValue("$elevated", (object?)request.ProcessElevated ?? DBNull.Value);
+                command.Parameters.AddWithValue("$version", (object?)request.AppVersion ?? DBNull.Value);
+                id = Convert.ToInt64(command.ExecuteScalar());
+            }
+        }
+        catch (SqliteException ex) when (IsSingleActiveViolation(ex))
+        {
+            throw new ActiveSessionExistsException(ex);
         }
         InsertSensors(transaction, id, request.Sensors);
         transaction.Commit();
         return GetSession(id)!;
     }
+
+    private static bool IsSingleActiveViolation(SqliteException ex) =>
+        ex.SqliteErrorCode == 19 && ex.Message.Contains("session.status", StringComparison.OrdinalIgnoreCase);
 
     public MonitoringSession? GetSession(long sessionId) =>
         QuerySessions("WHERE id = $id", c => c.Parameters.AddWithValue("$id", sessionId)).SingleOrDefault();
@@ -150,11 +160,16 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
             throw new InvalidOperationException($"Session {sessionId} is already active.");
 
         using var transaction = _connection.BeginTransaction();
-        using (var command = Command(transaction, "UPDATE session SET status = $status, ended_utc_ms = NULL, end_reason = NULL WHERE id = $id;"))
+        try
         {
+            using var command = Command(transaction, "UPDATE session SET status = $status, ended_utc_ms = NULL, end_reason = NULL WHERE id = $id;");
             command.Parameters.AddWithValue("$status", (int)SessionStatus.Active);
             command.Parameters.AddWithValue("$id", sessionId);
             command.ExecuteNonQuery();
+        }
+        catch (SqliteException ex) when (IsSingleActiveViolation(ex))
+        {
+            throw new ActiveSessionExistsException(ex);
         }
         InsertSensors(transaction, sessionId, sensors);
         transaction.Commit();
@@ -820,6 +835,36 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
         command.Parameters.AddWithValue("$e", settings.PsuEfficiency);
         command.Parameters.AddWithValue("$c", settings.IncludeCpuPackage);
         command.Parameters.AddWithValue("$g", settings.IncludeGpuBoard);
+        command.ExecuteNonQuery();
+    }
+
+    public const int MinMonitoringIntervalMs = 250;
+    public const int MaxMonitoringIntervalMs = 60_000;
+    public const int DefaultMonitoringIntervalMs = 1000;
+    private const string MonitoringIntervalKey = "monitoring_interval_ms";
+
+    /// <summary>The user's chosen sampling interval, or <see cref="DefaultMonitoringIntervalMs"/> if never set.</summary>
+    public int GetMonitoringIntervalMs()
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = "SELECT value FROM app_setting WHERE key = $k;";
+        command.Parameters.AddWithValue("$k", MonitoringIntervalKey);
+        return command.ExecuteScalar() is string s
+            && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ms)
+            && ms is >= MinMonitoringIntervalMs and <= MaxMonitoringIntervalMs
+            ? ms
+            : DefaultMonitoringIntervalMs;
+    }
+
+    public void SetMonitoringIntervalMs(int intervalMs)
+    {
+        if (intervalMs is < MinMonitoringIntervalMs or > MaxMonitoringIntervalMs)
+            throw new ArgumentOutOfRangeException(nameof(intervalMs), intervalMs,
+                $"Monitoring interval must be between {MinMonitoringIntervalMs} and {MaxMonitoringIntervalMs} ms.");
+        using var command = _connection.CreateCommand();
+        command.CommandText = "INSERT INTO app_setting (key, value) VALUES ($k, $v) ON CONFLICT (key) DO UPDATE SET value = excluded.value;";
+        command.Parameters.AddWithValue("$k", MonitoringIntervalKey);
+        command.Parameters.AddWithValue("$v", intervalMs.ToString(CultureInfo.InvariantCulture));
         command.ExecuteNonQuery();
     }
 

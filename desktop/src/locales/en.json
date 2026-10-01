@@ -1,6 +1,12 @@
 {
-  "app": { "title": "WattScope" },
-  "nav": { "dashboard": "Dashboard", "reports": "Reports", "settings": "Settings" },
+  "app": {
+    "title": "WattScope"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "reports": "Reports",
+    "settings": "Settings"
+  },
   "dashboard": {
     "systemPower": "Estimated system power",
     "cpuPower": "CPU package",
@@ -29,7 +35,25 @@
       "complete": "Complete",
       "partial": "Partial (lower bound)",
       "none": "No estimate"
-    }
+    },
+    "quality": {
+      "starting": "Starting...",
+      "complete": "Complete monitoring",
+      "partial": "Partial monitoring",
+      "sensorUnavailable": "Sensor unavailable",
+      "stopped": "Monitoring stopped",
+      "unavailable": "Monitor not running"
+    },
+    "qualityHelp": {
+      "starting": "Waiting for the first sample...",
+      "partial": "CPU power is unavailable (WattScope is not running as Administrator on a machine that needs it). The GPU is still monitored. The system figure is a lower bound and no cost is shown.",
+      "sensorUnavailable": "No required sensor is available right now, so there is no estimate.",
+      "stopped": "Nothing is being recorded. Closing this window does not stop monitoring -- only Stop monitoring or Exit does.",
+      "unavailable": "The background monitor is not running. Choose Start monitoring to bring it back."
+    },
+    "startMonitoring": "Start monitoring",
+    "stopMonitoring": "Stop monitoring",
+    "costWithheld": "Cost is not shown while the estimate is incomplete"
   },
   "chart": {
     "title": "Live power",
@@ -72,16 +96,26 @@
     "retention": "Raw data retention",
     "retentionDays": "days",
     "retentionHelp": "15-minute energy totals and cost history are kept indefinitely regardless of this setting; only the raw per-sample readings are pruned.",
-    "elevation": "Privileged access",
-    "elevationDescription": "CPU package power requires administrator privileges on this machine. WattScope never runs its whole interface elevated -- only the small background monitor process restarts elevated, after your explicit confirmation and a real Windows administrator prompt.",
-    "restartElevated": "Restart monitor as administrator",
     "measured": "Measured",
     "assumption": "Assumption you set -- not a measurement",
     "save": "Save",
     "saved": "Saved",
     "invalidPrice": "Enter a non-negative price.",
     "invalidEfficiency": "PSU efficiency must be between 1% and 100%.",
-    "invalidInterval": "Interval must be at least 250 ms."
+    "invalidInterval": "Interval must be at least 250 ms.",
+    "background": {
+      "title": "Background monitoring",
+      "description": "Closing this window keeps WattScope running in the system tray and monitoring continues. WattScope only runs while you have launched it; it does not start with Windows.",
+      "exit": "Exit WattScope",
+      "exitHelp": "Stops monitoring, saves the session and closes WattScope completely."
+    },
+    "administrator": {
+      "title": "Administrator",
+      "description": "On some machines CPU power can only be read when WattScope runs as Administrator. WattScope never elevates itself: for complete CPU monitoring, close it and launch it manually with Run as administrator.",
+      "running": "Running as Administrator",
+      "notRunning": "Not running as Administrator"
+    },
+    "intervalHelp": "Changing the interval continues the same session; a short gap is recorded and no energy is invented across it."
   },
   "common": {
     "loading": "Loading...",

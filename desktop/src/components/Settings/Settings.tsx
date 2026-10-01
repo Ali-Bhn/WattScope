@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { useSidecarRequest, useSidecarStatus } from "@/hooks/useSidecar";
+import { useMonitoring, useSidecarRequest } from "@/hooks/useSidecar";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/i18n";
 import { Num } from "@/components/Num";
 import { formatLocalDateTime } from "@/lib/format";
@@ -16,18 +16,46 @@ const LANGUAGE_NAMES: Record<SupportedLanguage, string> = {
 export function Settings() {
   const { i18n } = useTranslation();
   const request = useSidecarRequest();
-  const status = useSidecarStatus();
+  const { snapshot } = useMonitoring();
 
   return (
     <div className="flex flex-col gap-4">
       <LanguageCard currentLanguage={i18n.language} onChange={(lng) => i18n.changeLanguage(lng)} />
+      <BackgroundCard />
       <PriceCard request={request} />
       <EstimationCard request={request} />
-      <IntervalCard />
+      <IntervalCard request={request} />
       <RetentionCard request={request} />
-      <ElevationCard elevated={status?.elevated ?? false} />
+      <AdministratorCard elevated={snapshot?.elevated ?? false} />
       <DbInfoCard request={request} />
     </div>
+  );
+}
+
+/** Closing the window only hides it to the tray; this is the explicit way to end WattScope. */
+function BackgroundCard() {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+
+  const exit = async () => {
+    setBusy(true);
+    try {
+      await invoke("exit_app");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SectionCard title={t("settings.background.title")}>
+      <p className="text-xs text-ink-muted">{t("settings.background.description")}</p>
+      <div className="flex flex-col items-start gap-1">
+        <button type="button" className="btn" onClick={exit} disabled={busy}>
+          {t("settings.background.exit")}
+        </button>
+        <span className="text-xs text-ink-muted">{t("settings.background.exitHelp")}</span>
+      </div>
+    </SectionCard>
   );
 }
 
@@ -190,23 +218,30 @@ function EstimationCard({ request }: { request: ReturnType<typeof useSidecarRequ
   );
 }
 
-function IntervalCard() {
+function IntervalCard({ request }: { request: ReturnType<typeof useSidecarRequest> }) {
   const { t } = useTranslation();
   const [intervalMs, setIntervalMs] = useState("1000");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
+  useEffect(() => {
+    request<{ intervalMs: number }>({ cmd: "get_monitoring_interval" })
+      .then((r) => setIntervalMs(String(r.intervalMs)))
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const save = async () => {
     setError(null);
     const value = Number(intervalMs);
-    if (!Number.isFinite(value) || value < 250) {
+    if (!Number.isInteger(value) || value < 250 || value > 60_000) {
       setError(t("settings.invalidInterval"));
       return;
     }
     setBusy(true);
     try {
-      await invoke("restart_sidecar", { intervalMs: Math.round(value) });
+      await request({ cmd: "set_monitoring_interval", intervalMs: value });
       setSavedAt(Date.now());
     } catch (e) {
       setError(String(e));
@@ -217,9 +252,7 @@ function IntervalCard() {
 
   return (
     <SectionCard title={t("settings.monitoringInterval")}>
-      <p className="text-xs text-ink-muted">
-        Changing this restarts the background monitor (a short gap is recorded; no energy is invented across it).
-      </p>
+      <p className="text-xs text-ink-muted">{t("settings.intervalHelp")}</p>
       <div className="flex items-end gap-3">
         <Field label="ms">
           <input className="input w-28" inputMode="numeric" value={intervalMs} onChange={(e) => setIntervalMs(e.target.value)} />
@@ -277,47 +310,18 @@ function RetentionCard({ request }: { request: ReturnType<typeof useSidecarReque
   );
 }
 
-function ElevationCard({ elevated }: { elevated: boolean }) {
+function AdministratorCard({ elevated }: { elevated: boolean }) {
   const { t } = useTranslation();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [requested, setRequested] = useState(false);
-
-  const restartElevated = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await invoke("restart_sidecar_elevated");
-      setRequested(true);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
+  // WattScope never elevates itself. This only reports the state and says how to get complete CPU data.
   return (
-    <SectionCard title={t("settings.elevation")}>
-      <p className="text-xs text-ink-muted">{t("settings.elevationDescription")}</p>
+    <SectionCard title={t("settings.administrator.title")}>
+      <p className="text-xs text-ink-muted">{t("settings.administrator.description")}</p>
       <p className="text-xs">
-        {t("dashboard.monitoringStatus")}: <strong>{elevated ? t("settings.measured") : t("dashboard.notElevated")}</strong>
+        <strong>{elevated ? t("settings.administrator.running") : t("settings.administrator.notRunning")}</strong>
       </p>
-      {!elevated && (
-        <button type="button" className="btn" onClick={restartElevated} disabled={busy}>
-          {t("settings.restartElevated")}
-        </button>
-      )}
-      {requested && (
-        <p className="text-xs text-amber-400">
-          A Windows administrator prompt was requested. Live monitoring in this window pauses until you restart
-          WattScope, which will then connect to the elevated session's data.
-        </p>
-      )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
     </SectionCard>
   );
 }
-
 function DbInfoCard({ request }: { request: ReturnType<typeof useSidecarRequest> }) {
   const [info, setInfo] = useState<StorageStatistics | null>(null);
 

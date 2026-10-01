@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { Dashboard } from "@/components/Dashboard/Dashboard";
 import { Reports } from "@/components/Reports/Reports";
@@ -9,6 +10,20 @@ type View = "dashboard" | "reports" | "settings";
 export default function App() {
   const { t } = useTranslation();
   const [view, setView] = useState<View>("dashboard");
+
+  // The tray's "Settings" item asks the window to open that page.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listen<View>("navigate", (e) => setView(e.payload)).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   return (
     <div className="flex h-full">

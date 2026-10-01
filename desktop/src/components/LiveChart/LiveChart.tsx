@@ -41,6 +41,7 @@ export function LiveChart() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bufferRef = useRef<Point[]>([]);
   const dirtyRef = useRef(true);
+  const scheduleRef = useRef<(() => void) | null>(null);
   const [visible, setVisible] = useState<SeriesVisibility>({ cpu: true, gpu: true, total: true });
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
@@ -48,12 +49,26 @@ export function LiveChart() {
 
   useEffect(() => {
     let raf = 0;
+    let pending = false;
     let unlisten: (() => void) | undefined;
+    let unlistenVisibility: (() => void) | undefined;
     let cancelled = false;
 
-    function draw() {
+    // Frames are requested only when there is something new to paint -- an
+    // always-re-arming animation loop costs CPU even when nothing changes,
+    // and a window hidden to the tray must cost (almost) nothing.
+    const schedule = () => {
+      if (pending || cancelled) return;
+      pending = true;
       raf = requestAnimationFrame(draw);
-      if (!dirtyRef.current) return;
+    };
+    scheduleRef.current = schedule;
+
+    function draw() {
+      pending = false;
+      // Nothing to paint for a hidden window (the host also stops delivering
+      // ticks while hidden); stay dirty so the first visible frame repaints.
+      if (document.hidden || !dirtyRef.current) return;
       dirtyRef.current = false;
 
       const canvas = canvasRef.current;
@@ -133,7 +148,17 @@ export function LiveChart() {
       ctx.restore();
     }
 
-    raf = requestAnimationFrame(draw);
+    schedule();
+
+    listen<boolean>("ui-visibility", (event) => {
+      if (event.payload) {
+        dirtyRef.current = true;
+        schedule();
+      }
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlistenVisibility = fn;
+    });
 
     listen<TickMessage>("sidecar-tick", (event) => {
       if (cancelled) return;
@@ -143,6 +168,7 @@ export function LiveChart() {
       if (buffer.length > HISTORY_CAPACITY) buffer.shift();
       dirtyRef.current = true;
       setHasData(true);
+      schedule();
     }).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
@@ -151,13 +177,16 @@ export function LiveChart() {
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
+      scheduleRef.current = null;
       unlisten?.();
+      unlistenVisibility?.();
     };
   }, []);
 
   // Redraw once immediately after a visibility toggle, without waiting for the next tick.
   useEffect(() => {
     dirtyRef.current = true;
+    scheduleRef.current?.();
   }, [visible]);
 
   return (

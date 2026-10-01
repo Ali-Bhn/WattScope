@@ -40,6 +40,62 @@ public class EnergyMonitorTests
     }
 
     [Fact]
+    public void RepeatedSuspendAndResumeNotifications_RecordASingleGap()
+    {
+        var (monitor, store) = NewMonitor();
+        var session = monitor.Start([], Settings);
+
+        foreach (var s in Constant(0, 4, 1, 100, 100)) monitor.OnSample(s);
+        monitor.OnSuspend();
+        monitor.OnSuspend();
+        monitor.OnResume();
+        monitor.OnResume();
+        monitor.OnResume();
+        foreach (var s in Constant(600, 604, 1, 100, 100)) monitor.OnSample(s);
+        monitor.Stop();
+
+        var gap = Assert.Single(store.Gaps);
+        Assert.Equal(GapReason.Suspend, gap.Reason);
+        Assert.Equal(BaseUtc.AddSeconds(4), gap.StartUtc);
+        Assert.Equal(BaseUtc.AddSeconds(600), gap.EndUtc);
+        Assert.Equal(8, store.TotalsFor(session.Id).MonitoredSeconds, 9);
+    }
+
+    [Fact]
+    public void ResumeWithoutASuspend_DoesNotInterruptContinuousSampling()
+    {
+        var (monitor, store) = NewMonitor();
+        var session = monitor.Start([], Settings);
+
+        foreach (var s in Constant(0, 4, 1, 100, 100)) monitor.OnSample(s);
+        monitor.OnResume();
+        foreach (var s in Constant(5, 9, 1, 100, 100)) monitor.OnSample(s);
+        monitor.Stop();
+
+        Assert.Empty(store.Gaps);
+        Assert.Equal(9, store.TotalsFor(session.Id).MonitoredSeconds, 9);
+    }
+
+    [Fact]
+    public void SuspendThenResume_TwiceInOneSession_RecordsTwoSeparateGaps()
+    {
+        var (monitor, store) = NewMonitor();
+        monitor.Start([], Settings);
+
+        foreach (var s in Constant(0, 2, 1, 100, 100)) monitor.OnSample(s);
+        monitor.OnSuspend();
+        monitor.OnResume();
+        foreach (var s in Constant(100, 102, 1, 100, 100)) monitor.OnSample(s);
+        monitor.OnSuspend();
+        monitor.OnResume();
+        foreach (var s in Constant(500, 502, 1, 100, 100)) monitor.OnSample(s);
+        monitor.Stop();
+
+        Assert.Equal(2, store.Gaps.Count());
+        Assert.All(store.Gaps, g => Assert.Equal(GapReason.Suspend, g.Reason));
+    }
+
+    [Fact]
     public void SuspendFlushesImmediately()
     {
         var (monitor, store) = NewMonitor();

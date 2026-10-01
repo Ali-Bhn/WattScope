@@ -90,7 +90,27 @@ Forward-only migrations in `SchemaMigrations`, tracked in
 transaction. Opening a database whose version is newer than the build
 supports fails with `DatabaseSchemaTooNewException` without modifying it.
 Released migrations must never be edited; add a new one instead.
-Current version: **1**.
+Current version: **3**.
+
+| Version | Added | Milestone |
+|---|---|---|
+| 1 | initial schema: sessions, samples, buckets, gaps, availability, prices, settings | 002 |
+| 2 | `bucket_price_split` -- one row per (bucket, price) actually observed while recording, for sub-bucket electricity pricing (`docs/ENERGY_MODEL.md` section 4) | 003 |
+| 3 | `ux_session_single_active` -- a partial unique index guaranteeing **at most one `Active` session per database**. A database that already holds several `Active` sessions (orphans of crashed recorders) is repaired first: all but the newest are closed as `Interrupted` at their last persisted observation, the same rule crash recovery uses | 004 |
+
+## Session ownership (Milestone 004)
+
+At most one session may be `Active` at a time, enforced by the database
+(`ux_session_single_active`) rather than by process or UI state. Creating or
+reopening a second one raises `ActiveSessionExistsException` (an
+`InvalidOperationException`), so two processes racing to open a session
+cannot both succeed. In practice the recording lock (`MonitorLock`) means
+only one recorder is ever live; the index is the backstop if that assumption
+is ever violated. An `Active` row with no live recorder is an orphan and is
+closed as `Interrupted` by crash recovery before a new session is opened.
+
+The user's chosen monitoring interval is stored in `app_setting`
+(`monitoring_interval_ms`, 250-60000 ms, default 1000).
 
 ## Concurrency
 

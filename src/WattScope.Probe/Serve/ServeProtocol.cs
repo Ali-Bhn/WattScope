@@ -58,6 +58,10 @@ public sealed record ServeRequest
     public bool? IncludeCpu { get; init; }
     public bool? IncludeGpu { get; init; }
     public int? RetentionDays { get; init; }
+    public int? IntervalMs { get; init; }
+
+    /// <summary>start_monitoring: continue an existing session (default: latest) instead of opening a new one.</summary>
+    public bool? Resume { get; init; }
 }
 
 public sealed record ServeResponse
