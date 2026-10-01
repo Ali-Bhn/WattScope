@@ -6,6 +6,17 @@ native tray, logoff/shutdown, UAC). Each procedure says exactly what to do
 and what a pass looks like. Results are recorded in `docs/PROJECT_STATE.md`;
 anything not run there is marked **UNVERIFIED**.
 
+## Status of each procedure
+
+| # | Procedure | Status |
+|---|---|---|
+| 1 | Sleep / resume | **VERIFIED / PASSED** (2026-10-01, Session #18; details below and in `PROJECT_STATE.md`) |
+| 2 | System tray | **Partly verified**: only *Exit WattScope* was exercised (during procedure 1). Icon, tooltip, item states/live text, Start/Stop/Open/Settings, menu language: UNVERIFIED |
+| 3 | Logoff / shutdown / restart | UNVERIFIED |
+| 4 | Administrator launch | UNVERIFIED |
+| 5 | Persian / RTL visual check | Verified on a real-window screenshot of the Settings page (`PROJECT_STATE.md`); the other pages were not re-inspected |
+| 6 | Installers | UNVERIFIED (packages build; installing/uninstalling was not run) |
+
 All procedures use the packaged app (`desktop/src-tauri/target/release/wattscope.exe`
 or the installed one) and the CLI that ships beside it
 (`wattscope-probe.exe`). Note the validation sessions are real rows in
@@ -38,6 +49,16 @@ Pass criteria:
   (average power x awake time), not inflated.
 - The dashboard resumed ticking within a few seconds of waking, with no burst
   of rapid catch-up updates.
+
+**Recorded result (2026-10-01, run by the user, unelevated): PASSED.** Session #18
+(started 23:27:31) was put to Windows Sleep and resumed, then stopped via
+tray -> Exit. Exactly one gap, reason `Suspend`, 23:29:31 -> 23:31:28
+(00:01:57), "no energy recorded"; period 23:27:31 -> 23:36:56 with monitored
+time 00:07:28 (= 9:25 - 1:57); same session throughout; GPU 5.251 Wh at
+100 % coverage; CPU 0.000 Wh / 0 % (expected, unelevated); estimate Partial;
+complete cost n/a; partial lower-bound cost 0.00446172 EUR excluded from it;
+final status `Stopped: Stopped by user`. This PC delivered the `Suspend`
+notification; Modern Standby behaviour remains untested.
 
 If the PC uses Modern Standby (S0 low-power idle; see `powercfg /a`), the
 process may keep running during "sleep" and the expected result differs:

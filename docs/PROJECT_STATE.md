@@ -18,9 +18,10 @@ Last updated: 2026-10-01, after implementing and validating Milestone 004
   there.
 - **Milestone 004** -- Tray, Single Instance & Monitoring Lifecycle:
   **implemented and validated**, with a short list of items that still need a
-  human at the machine and are marked **UNVERIFIED** (real sleep/resume, the
-  native tray menu, logoff/shutdown, an Administrator launch, installer
-  install/uninstall). Automatic Windows startup and a privileged sensor
+  human at the machine and are marked **UNVERIFIED** (most of the native tray
+  menu, logoff/shutdown, an Administrator launch, installer install/uninstall).
+  **Real Windows sleep/resume was manually validated and PASSED** (Session #18,
+  below). Automatic Windows startup and a privileged sensor
   helper/service are intentionally deferred.
 
 # Milestone 004
@@ -77,6 +78,7 @@ sidecar (`set_monitoring_interval`).
 | Tauri build | `npm run tauri build` | MSI + NSIS built |
 | **Real packaged-app lifecycle** | `desktop/scripts/validate-lifecycle.ps1` against the final `wattscope.exe`: 24 checks | **24 / 24 passed** -- one host + one sidecar after launch; a second launch exits by itself and changes nothing; **8 simultaneous launches** create no extra host/sidecar/session; window X hides it (window gone) while host and the *same* sidecar keep running and the session record keeps advancing; launching again while hidden shows the existing window and the same single session continues; killing the sidecar -> a new one appears, crashed session recovered, one Active; 4 injected crashes -> restarts stop (bounded), host stays alive; relaunch works; killing the host -> the sidecar exits by itself within seconds and the session is closed `Stopped` (not Active/Interrupted) |
 | **Real UI actions** (Windows UI Automation against the live window) | Stop monitoring -> session `Stopped`, banner "Monitoring stopped"; Start monitoring -> a new session, exactly one Active; **Exit WattScope** -> host, sidecar and WebView processes all gone, session `Stopped` | pass |
+| **Real Windows sleep/resume (manual, run by the user)** | Session #18, unelevated, put to Windows Sleep and resumed, then stopped via tray -> Exit; result read back with the CLI summary | **VERIFIED / PASSED** -- see "Real sleep/resume result" below |
 | Partial monitoring shown honestly (real, unelevated, this machine) | Live accessibility tree of the dashboard: "Partial monitoring", the CPU-unavailable explanation, CPU `--` ("Not elevated"), GPU 42.6 W, system 102.9 W "Partial (lower bound)"; ticks carry `cpuWatts: null`, `sessionCompleteness: partial`, `sessionCostApprox: null` | pass |
 | Persian RTL (real window screenshot) | Sidebar on the right, right-aligned text, mirrored controls, numbers/units/dates left-to-right inside Persian text | pass (visual) |
 
@@ -121,18 +123,60 @@ database flush avg **0.66 ms**, max 1.7 ms; 0 gaps. Hiding the window does not
 reduce memory (the WebView stays alive); it removes the CPU. **Gaming/FPS impact
 was not measured** (no controlled game benchmark was run) -- no claim is made.
 
+### Real sleep/resume result (manual, user-run) -- VERIFIED
+
+Run by the user on this machine, unelevated, following
+`docs/MANUAL_VALIDATION.md` section 1. The figures below are the user's
+reported output of the CLI summary for the session; they were not
+re-generated in the documentation-only update that recorded them.
+
+| | Observed |
+|---|---|
+| Session | **#18**, started 2026-10-01 23:27:31 local |
+| Sleep | Windows Sleep, then resumed |
+| End | tray -> *Exit WattScope*; session `Active` -> **`Stopped: Stopped by user`** |
+| Period | 23:27:31 -> 23:36:56 (9 min 25 s) |
+| Monitored time | 00:07:28 |
+| Monitoring gaps | **exactly 1**, reason **`Suspend`**, 23:29:31 -> 23:31:28, duration **00:01:57**; the CLI states "no energy recorded" for it |
+| CPU package | 0.000 Wh, coverage 0.0 % (expected: deliberately unelevated, `ImplausibleZero`) |
+| GPU board | 5.251 Wh, coverage 100.0 % |
+| Complete estimate | 0.000 Wh, 0.0 % coverage, completeness **Partial** |
+| Partial lower-bound estimate | 12.748 Wh over 00:07:28 |
+| Complete-estimate cost | n/a |
+| Partial lower-bound cost | 0.00446172 EUR, correctly excluded from the complete cost |
+
+Consistency check: 9:25 period - 1:57 gap = 7:28, exactly the monitored time,
+so nothing was integrated across the sleep.
+
+What this verifies:
+
+1. The same session (#18) continued across sleep/resume; no new session was
+   created after resume.
+2. Exactly one gap was recorded, classified `Suspend` (the precise
+   `PowerModeChanged` path, not only the elapsed-time fallback), and its
+   duration matched the real sleep interval. No duplicate suspend/resume gap.
+3. No energy was integrated across the sleep interval, and monitoring resumed
+   after wake with no visible catch-up burst.
+4. Partial-monitoring semantics held throughout: CPU 0 W was never integrated
+   or shown as real power, the estimate stayed Partial, and the partial
+   lower-bound cost was kept out of the complete cost.
+5. As a side effect, the **tray -> Exit** menu item was exercised for real and
+   cleanly stopped the session (`Stopped by user`) -- it had previously only
+   been covered through the equivalent Settings -> Exit button.
+
+This closes the "real sleep/resume" UNVERIFIED item for the PC used, in the
+mode it used (the OS-delivered `Suspend` notification was received). It does
+not establish behaviour on a Modern Standby machine, or for sleeps whose
+notification is missed (that case is covered only by the automated
+elapsed-time-fallback tests).
 ## UNVERIFIED (needs a person at the machine; procedures in `docs/MANUAL_VALIDATION.md`)
 
-- **Real sleep/resume.** The logic and the event/fallback state machine are
-  automatically tested with synthetic samples, but the real
-  `SystemEvents.PowerModeChanged` path (and whether this PC's sleep reaches it,
-  or uses Modern Standby) has not been exercised -- the PC was deliberately not
-  put to sleep. Awaiting the manual procedure's results.
-- **The native tray icon and menu** (icon visible, tooltip, menu item states,
-  Start/Stop/Settings/Exit clicks, menu language incl. Persian rendering).
-  Everything behind the menu is exercised (the same request path is used by the
-  UI's Start/Stop, and *Exit* shares `graceful_exit` with Settings' Exit, which
-  was verified), but the native menu itself could not be driven automatically.
+- **The rest of the native tray** (icon visibility, tooltip, menu item
+  enabled/disabled states and live text, Start/Stop/Open/Settings clicks, menu
+  language incl. Persian rendering). Only **tray -> Exit** is verified (by the
+  user, in the sleep test above). Everything behind the other items is
+  exercised through the equivalent request path used by the UI's Start/Stop
+  buttons, but the native menu itself could not be driven automatically.
 - **Windows logoff / shutdown / restart.** Not tested. Design relies on
   `RunEvent::Exit` (2 s bound), the sidecar noticing stdin closing, and
   Milestone 002 crash recovery as the final net; whether Windows delivers the
@@ -143,8 +187,9 @@ was not measured** (no controlled game benchmark was run) -- no claim is made.
   unit-tested; the combination was not run elevated in this session.)
 - **MSI / NSIS install, upgrade and uninstall** (the packages build and the
   built exe was validated; installing them was not).
-- Real validation sessions #3-#16 now exist in the default database
-  (`%LOCALAPPDATA%\WattScope\wattscope.db`) from these runs (several are
+- Real validation sessions #3-#18 now exist in the default database
+  (`%LOCALAPPDATA%\WattScope\wattscope.db`) from these runs, including the
+  user's manual sleep-test session #18 (several earlier ones are
   `Interrupted` by the deliberate crash/kill tests). History is never deleted
   by uninstall.
 

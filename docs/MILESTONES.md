@@ -115,8 +115,11 @@ user to launch it with Administrator privileges (an interim limitation).
 No Windows Service, privileged helper/IPC, auto-start registration,
 automatic elevation or gaming analytics were built.
 
-Status: **implemented** -- see `docs/PROJECT_STATE.md` for what was verified
-(and what is still UNVERIFIED, which needs a human at the machine).
+Status: **implemented and validated**, including a real manual Windows
+sleep/resume test (PASSED). A few items still need a human at the machine and
+remain UNVERIFIED (most of the native tray menu, logoff/shutdown, an
+Administrator launch, installer install/uninstall) -- see
+`docs/PROJECT_STATE.md` and `docs/MANUAL_VALIDATION.md`.
 ## Later milestones (not started)
 
 Numbering and scope for milestones after 004 are not yet defined in this
