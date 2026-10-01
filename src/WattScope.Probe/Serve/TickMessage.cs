@@ -1,4 +1,4 @@
-using WattScope.Core.Energy;
+﻿using WattScope.Core.Energy;
 using WattScope.Core.Estimation;
 
 namespace WattScope.Probe.Serve;
@@ -46,4 +46,13 @@ public sealed record TickMessage
     public string? Currency { get; init; }
 
     public required bool Elevated { get; init; }
+
+    /// <summary>
+    /// The current gaming context (a possible game being confirmed, a running
+    /// session, or one in its end grace period) -- null when there is none, so a
+    /// tick costs nothing extra outside gaming. Only this small summary is sent;
+    /// never process lists (docs/GAMING.md).
+    /// </summary>
+    public WattScope.Core.Gaming.GamingLiveState? Gaming { get; init; }
 }
+

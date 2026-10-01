@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using WattScope.Core.Estimation;
@@ -18,7 +18,7 @@ namespace WattScope.Probe.Serve;
 /// past its boundary: malformed or invalid input becomes a structured error
 /// response, not a crash of the monitoring process.
 /// </summary>
-public sealed class ServeRequestProcessor(SqliteEnergyStore queryStore, MonitoringController controller, Action requestShutdown, ILogger logger)
+public sealed class ServeRequestProcessor(SqliteEnergyStore queryStore, MonitoringController controller, Action requestShutdown, ILogger logger, GamingService? gaming = null)
 {
     /// <summary>The longest request line accepted; anything larger is rejected before parsing.</summary>
     public const int MaxLineLength = 16 * 1024;
@@ -94,6 +94,27 @@ public sealed class ServeRequestProcessor(SqliteEnergyStore queryStore, Monitori
                 return SetRetention(request);
             case "get_db_info":
                 return queryStore.GetStatistics();
+            case "get_gaming_state":
+                return GamingHandlers.State(gaming, controller);
+            case "get_gaming_sessions":
+                return GamingHandlers.Sessions(queryStore, request);
+            case "get_gaming_session":
+                return GamingHandlers.Session(queryStore, request);
+            case "get_game_aggregates":
+                return GamingHandlers.Aggregates(queryStore);
+            case "get_game_mappings":
+                return queryStore.GetGameMappings();
+            case "set_game_mapping":
+                return GamingHandlers.SetMapping(queryStore, Required(gaming), request);
+            case "remove_game_mapping":
+                return GamingHandlers.RemoveMapping(queryStore, Required(gaming), request);
+            case "start_manual_gaming":
+                return GamingHandlers.StartManual(queryStore, Required(gaming), controller, request);
+            case "stop_manual_gaming":
+                Required(gaming).Tracker.StopManual();
+                return new { live = gaming!.Tracker.Live() };
+            case "get_running_executables":
+                return GamingHandlers.RunningExecutables(Required(gaming));
             case "shutdown":
                 requestShutdown();
                 return new { stopping = true };
@@ -101,6 +122,9 @@ public sealed class ServeRequestProcessor(SqliteEnergyStore queryStore, Monitori
                 throw new ArgumentException($"Unknown command '{request.Cmd}'.");
         }
     }
+
+    private static GamingService Required(GamingService? gaming) =>
+        gaming ?? throw new InvalidOperationException("Gaming analytics are not available in this process.");
 
     /// <summary>
     /// Stores the interval; if monitoring is running, restarts the run at the
@@ -116,7 +140,7 @@ public sealed class ServeRequestProcessor(SqliteEnergyStore queryStore, Monitori
         var current = controller.Snapshot();
         if (current.State == "recording" && current.IntervalMs != intervalMs)
         {
-            await controller.StopAsync("Interval changed").ConfigureAwait(false);
+            await controller.StopAsync("Interval changed", keepGamingSession: true).ConfigureAwait(false);
             await controller.StartAsync(resume: true, resumeSessionId: current.SessionId, intervalMs: intervalMs).ConfigureAwait(false);
         }
         return new { intervalMs, state = controller.Snapshot() };
@@ -186,3 +210,4 @@ public sealed class ServeRequestProcessor(SqliteEnergyStore queryStore, Monitori
         return new { days, pruned };
     }
 }
+

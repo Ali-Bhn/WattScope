@@ -19,9 +19,9 @@ public class SchemaMigrationTests
         using var db = new TestDatabase();
 
         using (var store = db.Open())
-            Assert.Equal(3, store.SchemaVersion);
+            Assert.Equal(4, store.SchemaVersion);
 
-        Assert.Equal(3L, Pragma(db.FilePath, "user_version"));
+        Assert.Equal(4L, Pragma(db.FilePath, "user_version"));
         Assert.Equal("wal", Pragma(db.FilePath, "journal_mode"));
         Assert.Equal(2L, Pragma(db.FilePath, "auto_vacuum")); // 2 = INCREMENTAL
     }
@@ -35,7 +35,7 @@ public class SchemaMigrationTests
 
         using (var store = db.Open())
         {
-            Assert.Equal(3, store.SchemaVersion);
+            Assert.Equal(4, store.SchemaVersion);
             Assert.Equal(3, store.GetRawRetentionDays());
             Assert.Equal("ok", store.CheckIntegrity());
         }

@@ -4,6 +4,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "gaming": "Gaming",
     "reports": "Reports",
     "settings": "Settings"
   },
@@ -61,6 +62,115 @@
     "gpu": "GPU",
     "total": "Estimated total",
     "noData": "Waiting for samples..."
+  },
+  "gaming": {
+    "title": "Gaming",
+    "sessionTitle": "Gaming Session",
+    "live": "LIVE",
+    "ending": "ENDING",
+    "manualBadge": "Manual",
+    "autoBadge": "Auto-detected",
+    "noGame": "No game detected",
+    "noGameHelp": "A game is recognized while monitoring is running. Launchers, browsers and other programs are not counted as games.",
+    "needsMonitoring": "Monitoring is stopped. Games are only detected while WattScope is monitoring.",
+    "detecting": "Possible game, confirming:",
+    "running": "Running",
+    "duration": "Duration",
+    "monitored": "Monitored",
+    "gpuPower": "GPU power",
+    "cpuPower": "CPU power",
+    "systemPower": "Estimated system power",
+    "energy": "Energy",
+    "cost": "Estimated cost",
+    "lowerBound": "Lower bound (partial)",
+    "cpuUnavailable": "Unavailable",
+    "partialBanner": "Partial: CPU power is not available, so energy and system power are lower bounds and no complete cost is shown. GPU figures are still measured.",
+    "costStatus": {
+      "withheldPartial": "Not shown: the estimate is partial",
+      "withheldUnpriced": "Not shown: no electricity price covers this energy",
+      "noEstimate": "No estimate available"
+    },
+    "endReason": {
+      "processExited": "Game closed",
+      "manualStop": "Stopped manually",
+      "monitoringStopped": "Monitoring stopped",
+      "interrupted": "Interrupted (WattScope ended unexpectedly)",
+      "excluded": "Excluded by you"
+    },
+    "source": {
+      "userMapping": "Marked as a game by you",
+      "knownCatalog": "Known game",
+      "launcherChild": "Started by a game launcher",
+      "libraryPath": "Found in a game library folder",
+      "manual": "Started manually"
+    },
+    "manual": {
+      "start": "Start gaming session manually",
+      "stop": "Stop manual gaming session",
+      "help": "Use this when a game is not detected automatically. The session uses the same monitoring and energy rules as an automatic one.",
+      "name": "Game name",
+      "exe": "Program (optional)",
+      "remember": "Detect this program automatically next time",
+      "begin": "Start session",
+      "requiresMonitoring": "Start monitoring first"
+    },
+    "history": {
+      "title": "Gaming history",
+      "none": "No gaming sessions recorded yet.",
+      "game": "Game",
+      "start": "Start",
+      "end": "End",
+      "duration": "Duration",
+      "monitored": "Monitored",
+      "unmonitored": "Not monitored",
+      "energy": "Energy",
+      "cost": "Cost",
+      "lowerBoundCost": "Lower-bound cost",
+      "costStatus": "Cost status",
+      "completeness": "Completeness",
+      "gaps": "Monitoring gaps",
+      "endReason": "Ended",
+      "source": "Recognized by",
+      "executable": "Program",
+      "avgCpu": "Average CPU power",
+      "avgGpu": "Average GPU power",
+      "avgSystem": "Average system power (estimated)",
+      "peakCpu": "Peak CPU power",
+      "peakGpu": "Peak GPU power",
+      "peakSystem": "Peak system power (estimated)",
+      "lowerBoundNote": "This session is partial: values marked with ≥ are lower bounds, not complete estimates.",
+      "approxPrice": "* Approximate: a price was added after this session was recorded, so its cost is split by time, not by measurement."
+    },
+    "aggregates": {
+      "title": "Per game",
+      "help": "Complete and partial sessions are never added together. Averages are weighted by time, not averaged per session.",
+      "sessions": "Sessions",
+      "sessionsShort": "sessions",
+      "playTime": "Play time",
+      "monitored": "Monitored",
+      "avgSession": "Average session",
+      "complete": "Complete sessions",
+      "partial": "Partial sessions",
+      "unpriced": "unpriced",
+      "noCost": "no cost"
+    },
+    "games": {
+      "title": "Manage games",
+      "help": "Mark a program as a game, give it a name, or exclude it from detection. Your choices are stored on this computer only.",
+      "exe": "Program",
+      "name": "Game name",
+      "kind": "Action",
+      "kindGame": "Is a game",
+      "kindExcluded": "Never a game",
+      "add": "Save",
+      "remove": "Remove",
+      "pick": "Pick a running program",
+      "pickNone": "No candidate programs are running.",
+      "empty": "No programs marked yet.",
+      "rename": "Rename",
+      "exclude": "Never detect this program",
+      "privacyNote": "Detection only reads the list of running programs. WattScope never touches a game's memory or files and does not interact with the game."
+    }
   },
   "reports": {
     "title": "Reports",
@@ -123,6 +233,7 @@
     "watts": "W",
     "kwh": "kWh",
     "seconds": "s",
-    "close": "Close"
+    "close": "Close",
+    "na": "n/a"
   }
 }

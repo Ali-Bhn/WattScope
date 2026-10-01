@@ -1,7 +1,7 @@
 # Project State
 
-Last updated: 2026-10-01, after implementing and validating Milestone 004
-(tray, single instance, monitoring/sidecar lifecycle) on top of Milestone 003.
+Last updated: 2026-10-02, after implementing Milestone 005 (gaming session
+detection and energy analytics) on top of Milestone 004.
 
 ## Status
 
@@ -23,6 +23,106 @@ Last updated: 2026-10-01, after implementing and validating Milestone 004
   **Real Windows sleep/resume was manually validated and PASSED** (Session #18,
   below). Automatic Windows startup and a privileged sensor
   helper/service are intentionally deferred.
+
+- **Milestone 005** -- Gaming Session Detection & Energy Analytics:
+  **implemented and validated** with synthetic processes (automated) and with
+  harmless stand-in processes on the real packaged app. **No real game has been
+  run: the Call of Duty / Warzone validation is UNVERIFIED** until the user
+  performs `docs/MANUAL_VALIDATION.md` section 7.
+
+# Milestone 005
+
+Design, rules, state machine, database, anti-cheat boundary and limitations:
+`docs/GAMING.md`.
+
+## What was built
+
+| Area | Implementation |
+|---|---|
+| Model | `GamingSession` distinct from the monitoring session (FK, 0..n per monitoring session); energy derived from the monitor's verified intervals via `IMonitorObserver` (no second integration, no raw-sample copy) |
+| Detection | Passive: toolhelp process snapshot every 5 s while monitoring, one `PROCESS_QUERY_LIMITED_INFORMATION` query per new process (cached), layered identification (user mapping > catalog > launcher child > library folder; version metadata only names). Launchers/browsers/chat/capture tools never games |
+| State machine | NoGame / Candidate / Confirmed / EndingGrace, thresholds 20 s / 60 s confirm, 30 s grace, 5 s poll; one authoritative context; deterministic multi-candidate ordering |
+| Energy | `GamingLedger` per electricity price + peaks; candidate energy kept from first sight; grace tail dropped or merged; gaps/sleep never integrated; Partial/Complete never merged; cost only when Complete and fully priced; retroactive prices flagged approximate |
+| Database | Schema v4 (additive): `game_mapping`, `gaming_session`, `gaming_session_energy`; unique single-active index; crash recovery as `Interrupted` |
+| Protocol | `tick.gaming` (small live summary) + `get_gaming_*`, mapping, manual-session and running-programs requests; no Rust host change |
+| UI | Gaming page (live, history + detail, per-game aggregates, manage games, manual session) in EN/DE/FA, RTL-safe |
+| CLI | `--gaming`, `--game-mark`, `--game-exclude`, `--game-unmark` |
+| Env switches | `WATTSCOPE_DB` (database path for a whole process tree; validation/tests), `WATTSCOPE_GAME_DETECTION=off` |
+| Packaging | MSI 36.12 MiB, NSIS 27.03 MiB build |
+
+## Verification
+
+| Requirement | How verified | Result |
+|---|---|---|
+| M001-M004 intact | `dotnet test WattScope.slnx` | **347 passed** (Core 209, Storage 51, Hardware 11, Probe 76), 0 failed, 0 warnings; was 187. Two storage tests had their schema-version assertions (3 -> 4) and the hand-made "rewind to M003" fixture updated for v4 |
+| New .NET tests (160) | Detector, identifier, tracker (attribution, partial/complete, gaps, sleep via the real `EnergyMonitor`, grace tail, price change/unpriced/retroactive, manual, ownership, recovery), analytics (weighted aggregates), storage (migration from an M004-shaped DB, round trip, single-active, crash recovery, mappings, env override), probe (controller + real SQLite, sidecar restart mid-game, interval change, protocol, CLI, real poller with scripted processes, the real Windows process source) | pass |
+| Frontend | `npm test` 43 passed (was 30); `npm run typecheck` clean; `npm run build` clean | pass |
+| Rust | `cargo test` 12 passed (host unchanged) | pass |
+| Packages | `npm run tauri build` | MSI + NSIS built |
+| **Migration of a real M004 database** | Copy of the real database (schema 3, 18 sessions): M004 build confirmed schema 3; M005 build migrated to 4, 18 sessions kept, integrity ok | **pass** |
+| **Real packaged app, stand-in processes** (`desktop/scripts/validate-gaming.ps1`, scratch DB via `WATTSCOPE_DB`) | **29 / 29 checks passed**: notepad + an unmapped tool -> no session; a launcher-named stand-in alone (50 s) -> none; launcher + helper in its own folder -> none; a user-mapped test exe -> one session, named, source UserMapping, started 1.7 s after the process (detected after ~24 s), ended `ProcessExited` 1.6 s after the process vanished (not 30 s later), monitored = duration, **Partial** (unelevated: CPU n/a, GPU 69.4 W avg, system `>=` 132.7 W, no cost); same with the window hidden in the tray; host killed mid-game -> sidecar exits by itself, session closed `MonitoringStopped`; relaunch works; 3 sessions persisted; one Active monitoring session; integrity ok | pass |
+
+## Measured overhead (packaged build, this machine, unelevated, 1 s sampling)
+
+`desktop/scripts/measure-gaming-overhead.ps1`: same binary, A/B on
+`WATTSCOPE_GAME_DETECTION`, 60 s per phase after a 15 s settle, 32 logical
+CPUs, CPU = % of **one** core, single runs on a busy desktop (indicative;
+earlier M004 runs on the same machine varied by about +-0.3 between runs).
+
+| | detection OFF (monitoring only) | detection ON, idle | detection ON, active gaming session |
+|---|---|---|---|
+| Sidecar CPU, window visible | 0.88 | 1.69 | 1.66 |
+| Sidecar CPU, hidden in tray | 0.88 | 1.32 | 1.06 |
+| Sidecar working set (hidden) | 99.2 MiB | 102.7 MiB | 104.6 MiB |
+| Total CPU, visible / hidden | 1.53 / 1.34 | 2.44 / 1.71 | 2.39 / 1.27 |
+| Total working set (hidden) | 477.9 MiB | 479.9 MiB | 480.3 MiB |
+
+Reading: detection adds roughly **0.2-0.8 % of one core** (< 0.03 % of the
+machine) and **~3-6 MiB** to the sidecar; the active-session column is not
+higher than idle, i.e. the per-sample ledger cost is below the noise. The
+"M004 baseline" is **not** a different binary: the real database is now
+schema 4 (an M004 build cannot open it and the sidecar's database path cannot
+be redirected without the new override), so the A/B uses detection OFF in the
+M005 binary as the baseline. For cross-reference, the earlier M004 packaged
+measurement on the same machine was 2.21 / 1.22 % total CPU (visible /
+hidden) and 469 / 475 MiB. **Gaming frame-rate / FPS impact was NOT measured**
+(no controlled benchmark with a real game); no claim of zero FPS impact is made.
+
+## Incident during validation (disclosed)
+
+The first validation attempt assumed `LOCALAPPDATA` redirects the database;
+it does not (the path comes from the Windows known-folder API). The packaged
+app therefore ran for ~40 s against the **real** database: it migrated it to
+schema 4 (non-destructive, integrity ok) and recorded one 37-second monitoring
+session, **#19** (`Stopped`). Nothing was deleted or altered. The `WATTSCOPE_DB`
+override was added and every later run used it; the real database was
+re-checked afterwards (19 sessions, schema 4, integrity ok).
+
+## UNVERIFIED (needs a person / a real game)
+
+- **Call of Duty / Warzone through Battle.net**: not launched, not validated.
+  Procedure: `docs/MANUAL_VALIDATION.md` section 7. In particular unverified:
+  the game's real executable name vs the catalog (`cod.exe` etc. are best
+  guesses), detection latency with the real process tree, and anything about
+  anti-cheat interaction (no compatibility claim is made).
+- The **real** Battle.net launcher was not exercised (a stand-in named
+  `Battle.net.exe` was); it happened not to be running during validation.
+- **Complete** (elevated) gaming sessions with a cost: covered by unit tests
+  only; the real runs were unelevated (Partial).
+- Heuristic detection (launcher child / library folder) on real software:
+  unit-tested only.
+- Real Windows sleep during a game (the sleep path is covered by tests with
+  the real `EnergyMonitor`, and by the M004 real-sleep result for monitoring).
+- The Gaming page itself was type-checked/built and its logic unit-tested but
+  **not visually inspected** in a running window in this session (including
+  Persian RTL on this page).
+- Installing the MSI/NSIS packages (as in M004).
+
+## Known limitations
+
+See `docs/GAMING.md` section 12 (executable-name identity, small catalog,
+heuristics can be wrong, 5 s resolution, whole-machine energy, approximate
+retroactive-price cost, ~10 s loss on crash).
 
 # Milestone 004
 

@@ -16,7 +16,11 @@ public enum CliCommand
     Estimation,
     Retention,
     DbInfo,
-    SelfTest
+    SelfTest,
+    Gaming,
+    GameMark,
+    GameExclude,
+    GameUnmark
 }
 
 public sealed record CliOptions
@@ -46,6 +50,12 @@ public sealed record CliOptions
     public bool? IncludeCpu { get; init; }
     public bool? IncludeGpu { get; init; }
     public int? RetentionDays { get; init; }
+
+    /// <summary>--game-mark / --game-exclude / --game-unmark: the executable name (or full path).</summary>
+    public string? GameExecutable { get; init; }
+
+    /// <summary>--game-mark: the display name for the game.</summary>
+    public string? GameName { get; init; }
     public string? ParseError { get; init; }
 
     public bool NeedsHardware => Command is CliCommand.Discover or CliCommand.Monitor or CliCommand.Record or CliCommand.Serve;
@@ -63,7 +73,11 @@ public sealed record CliOptions
         ["--estimation"] = CliCommand.Estimation,
         ["--retention"] = CliCommand.Retention,
         ["--db-info"] = CliCommand.DbInfo,
-        ["--selftest"] = CliCommand.SelfTest
+        ["--selftest"] = CliCommand.SelfTest,
+        ["--gaming"] = CliCommand.Gaming,
+        ["--game-mark"] = CliCommand.GameMark,
+        ["--game-exclude"] = CliCommand.GameExclude,
+        ["--game-unmark"] = CliCommand.GameUnmark
     };
 
     /// <summary>Which options each command accepts; anything else is an error rather than silently ignored.</summary>
@@ -82,7 +96,11 @@ public sealed record CliOptions
         [CliCommand.Estimation] = ["--db", "--other-watts", "--psu-efficiency", "--include-cpu", "--include-gpu"],
         [CliCommand.Retention] = ["--db"],
         [CliCommand.DbInfo] = ["--db"],
-        [CliCommand.SelfTest] = []
+        [CliCommand.SelfTest] = [],
+        [CliCommand.Gaming] = ["--db"],
+        [CliCommand.GameMark] = ["--db", "--name"],
+        [CliCommand.GameExclude] = ["--db"],
+        [CliCommand.GameUnmark] = ["--db"]
     };
 
     public static CliOptions Parse(string[] args)
@@ -114,6 +132,12 @@ public sealed record CliOptions
                     if (!TryNext(args, ref i, out var text) || !TryParseDecimal(text, out var price))
                         return Error("--set-price requires a price per kWh using '.' as decimal separator, e.g. --set-price 0.3175");
                     result = result with { Price = price };
+                }
+                else if (flagCommand is CliCommand.GameMark or CliCommand.GameExclude or CliCommand.GameUnmark)
+                {
+                    if (!TryNext(args, ref i, out var exe) || exe.StartsWith("--", StringComparison.Ordinal))
+                        return Error($"{arg} requires an executable name, e.g. {arg} game.exe");
+                    result = result with { GameExecutable = exe };
                 }
                 else if (flagCommand == CliCommand.Retention && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
                 {
@@ -182,6 +206,11 @@ public sealed record CliOptions
                         !DateTimeOffset.TryParse(effectiveText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var effective))
                         return Error("--effective requires an ISO-8601 date/time, e.g. 2026-10-01 or 2026-10-01T00:00:00+02:00 (local time if no offset).");
                     result = result with { EffectiveFrom = effective.ToUniversalTime() };
+                    break;
+                case "--name":
+                    if (!TryNext(args, ref i, out var gameName))
+                        return Error("--name requires a game name.");
+                    result = result with { GameName = gameName };
                     break;
                 case "--currency":
                     if (!TryNext(args, ref i, out var currency))
@@ -272,6 +301,10 @@ public sealed record CliOptions
           WattScope.Probe.exe --estimation [--other-watts <W>] [--psu-efficiency <0-1>] [--include-cpu true|false] [--include-gpu true|false] [--db <path>]
           WattScope.Probe.exe --retention [<days>] [--db <path>]
           WattScope.Probe.exe --db-info [--db <path>]
+          WattScope.Probe.exe --gaming [--db <path>]
+          WattScope.Probe.exe --game-mark <exe> [--name <game name>] [--db <path>]
+          WattScope.Probe.exe --game-exclude <exe> [--db <path>]
+          WattScope.Probe.exe --game-unmark <exe> [--db <path>]
           WattScope.Probe.exe --selftest
           WattScope.Probe.exe --help
 
@@ -302,6 +335,13 @@ public sealed record CliOptions
           --estimation          Show or change wall-power estimation assumptions (applies to new sessions).
           --retention [<days>]  Show or set how many days raw samples are kept (aggregates are kept).
           --db-info             Database statistics and integrity check.
+        Gaming (Milestone 005):
+          --gaming              List recorded gaming sessions, per-game totals and your game mappings.
+          --game-mark <exe>     Mark an executable as a game (optionally --name). Picked up the next time
+                                the desktop app starts (or immediately from the Gaming page).
+          --game-exclude <exe>  Never detect this executable as a game.
+          --game-unmark <exe>   Remove your mapping for this executable.
+
           --selftest            Validate energy integration, pricing, persistence and recovery using
                                 synthetic data and a temporary database (no hardware needed).
 
@@ -310,6 +350,7 @@ public sealed record CliOptions
           --duration <seconds>  Stop automatically after this many seconds.
           --export <path>       Write a structured JSON report to this file.
           --db <path>           Database file. Default: %LOCALAPPDATA%\WattScope\wattscope.db
+                                (the WATTSCOPE_DB environment variable, if set, replaces the default)
           --help                Show this help text.
 
         Examples:

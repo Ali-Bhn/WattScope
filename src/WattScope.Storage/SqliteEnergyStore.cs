@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using WattScope.Core.Energy;
 using WattScope.Core.Estimation;
+using WattScope.Core.Gaming;
 using WattScope.Core.Monitoring;
 using WattScope.Core.Pricing;
 
@@ -25,6 +26,8 @@ public sealed record StorageStatistics
     public required long Gaps { get; init; }
     public required long AvailabilityRows { get; init; }
     public required long Prices { get; init; }
+    public long GamingSessions { get; init; }
+    public long GameMappings { get; init; }
     public required int RawRetentionDays { get; init; }
     public DateTimeOffset? OldestSampleUtc { get; init; }
     public DateTimeOffset? NewestSampleUtc { get; init; }
@@ -38,7 +41,7 @@ public sealed record StorageStatistics
 /// committed transactions survive a process crash; the most recent commits
 /// may be lost on an OS crash or power loss. See docs/STORAGE.md.
 /// </summary>
-public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
+public sealed partial class SqliteEnergyStore : IEnergyStore, IGamingStore, IDisposable
 {
     public const int DefaultRawRetentionDays = 7;
     private const string RawRetentionKey = "raw_retention_days";
@@ -61,8 +64,17 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
 
     public string DatabasePath { get; }
 
+    /// <summary>
+    /// Optional full path that replaces <see cref="DefaultDatabasePath"/> for every WattScope process that
+    /// inherits it (the desktop host's sidecar included). Meant for validation and tests that must not
+    /// touch the real history; it is not set in normal use. An explicit <c>--db</c> still wins.
+    /// </summary>
+    public const string DatabasePathEnvironmentVariable = "WATTSCOPE_DB";
+
     public static string DefaultDatabasePath =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WattScope", "wattscope.db");
+        Environment.GetEnvironmentVariable(DatabasePathEnvironmentVariable) is { Length: > 0 } overridePath
+            ? overridePath
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WattScope", "wattscope.db");
 
     /// <summary>Opens (creating if needed) and migrates the database.</summary>
     public static SqliteEnergyStore Open(string path, ILogger? logger = null)
@@ -191,6 +203,7 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
     /// </summary>
     public IReadOnlyList<MonitoringSession> RecoverInterruptedSessions()
     {
+        RecoverInterruptedGamingSessions();
         var orphaned = QuerySessions("WHERE status = $status", c => c.Parameters.AddWithValue("$status", (int)SessionStatus.Active));
         if (orphaned.Count == 0)
             return [];
@@ -931,6 +944,8 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
             Gaps = Scalar<long>(_connection, "SELECT count(*) FROM monitoring_gap;"),
             AvailabilityRows = Scalar<long>(_connection, "SELECT count(*) FROM sensor_availability;"),
             Prices = Scalar<long>(_connection, "SELECT count(*) FROM electricity_price;"),
+            GamingSessions = Scalar<long>(_connection, "SELECT count(*) FROM gaming_session;"),
+            GameMappings = Scalar<long>(_connection, "SELECT count(*) FROM game_mapping;"),
             RawRetentionDays = GetRawRetentionDays(),
             OldestSampleUtc = oldest is { } o ? FromMs(o) : null,
             NewestSampleUtc = newest is { } n ? FromMs(n) : null
@@ -986,3 +1001,5 @@ public sealed class SqliteEnergyStore : IEnergyStore, IDisposable
         return (T)Convert.ChangeType(value, target, CultureInfo.InvariantCulture);
     }
 }
+
+

@@ -4,7 +4,9 @@ using Microsoft.Win32;
 using WattScope.Core.Discovery;
 using WattScope.Core.Energy;
 using WattScope.Core.Sampling;
+using WattScope.Core.Gaming;
 using WattScope.Core.Sensors;
+using WattScope.Hardware.Processes;
 using WattScope.Probe.Serve;
 using WattScope.Storage;
 
@@ -64,6 +66,9 @@ public static class ServeCommand
         // thread-safe, so each connection is used by exactly one logical owner.
         using var recordStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
         using var queryStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
+        // A third connection, used only by game detection (Milestone 005), which writes gaming sessions
+        // from its own threads and must not share the recording connection with the energy monitor.
+        using var gamingStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
         var logger = loggerFactory.CreateLogger("WattScope.Probe.Serve");
 
         foreach (var recovered in recordStore.RecoverInterruptedSessions())
@@ -79,6 +84,14 @@ public static class ServeCommand
 
         var builder = new PowerSampleBuilder(snapshot.PowerClassification);
         var source = new ProviderSampleSource(providers, builder, loggerFactory);
+        // Game detection can be switched off with WATTSCOPE_GAME_DETECTION=off (no process polling at all);
+        // monitoring is unaffected. Used for overhead A/B measurements and by anyone who does not want it.
+        var detectionOff = string.Equals(Environment.GetEnvironmentVariable("WATTSCOPE_GAME_DETECTION"), "off", StringComparison.OrdinalIgnoreCase);
+        using var gaming = detectionOff
+            ? null
+            : new GamingService(gamingStore, new WindowsProcessSource(logger), new FileVersionExecutableMetadata(), new GameDetectorOptions(), logger);
+        if (detectionOff)
+            logger.LogWarning("Game detection is disabled by WATTSCOPE_GAME_DETECTION=off.");
         await using var controller = new MonitoringController(
             recordStore, source, builder.Bindings,
             new MonitoringControllerOptions
@@ -88,10 +101,10 @@ public static class ServeCommand
                 GpuAvailable = builder.Bindings.Any(b => b.Channel == EnergyChannel.GpuBoard),
                 AppVersion = appVersion
             },
-            ServeProtocol.WriteLine, logger);
+            ServeProtocol.WriteLine, logger, gaming);
 
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var processor = new ServeRequestProcessor(queryStore, controller, () => runCts.Cancel(), logger);
+        var processor = new ServeRequestProcessor(queryStore, controller, () => runCts.Cancel(), logger, gaming);
 
         // Must run on its own thread, not as a plain un-awaited async call:
         // Console.In.ReadLineAsync does not reliably yield control back before
@@ -193,3 +206,4 @@ public static class ServeCommand
         }
     }
 }
+

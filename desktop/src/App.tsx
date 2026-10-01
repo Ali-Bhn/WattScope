@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { Dashboard } from "@/components/Dashboard/Dashboard";
+import { Gaming } from "@/components/Gaming/Gaming";
 import { Reports } from "@/components/Reports/Reports";
 import { Settings } from "@/components/Settings/Settings";
 
-type View = "dashboard" | "reports" | "settings";
+type View = "dashboard" | "gaming" | "reports" | "settings";
 
 export default function App() {
   const { t } = useTranslation();
@@ -32,6 +33,9 @@ export default function App() {
         <NavButton active={view === "dashboard"} onClick={() => setView("dashboard")}>
           {t("nav.dashboard")}
         </NavButton>
+        <NavButton active={view === "gaming"} onClick={() => setView("gaming")}>
+          {t("nav.gaming")}
+        </NavButton>
         <NavButton active={view === "reports"} onClick={() => setView("reports")}>
           {t("nav.reports")}
         </NavButton>
@@ -42,6 +46,7 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto p-5">
         {view === "dashboard" && <Dashboard />}
+        {view === "gaming" && <Gaming />}
         {view === "reports" && <Reports />}
         {view === "settings" && <Settings />}
       </main>

@@ -120,10 +120,52 @@ sleep/resume test (PASSED). A few items still need a human at the machine and
 remain UNVERIFIED (most of the native tray menu, logoff/shutdown, an
 Administrator launch, installer install/uninstall) -- see
 `docs/PROJECT_STATE.md` and `docs/MANUAL_VALIDATION.md`.
+## Milestone 005 -- Gaming Session Detection & Energy Analytics
+
+Recognise when the user is playing a PC game and report energy and cost for
+that gaming session, on top of the existing monitoring pipeline:
+
+1. A `GamingSession` that is distinct from the monitoring session (0..n per
+   monitoring session) with identity, time span, detection source, end reason,
+   measured CPU/GPU energy, estimated system energy, completeness and cost.
+   Energy is derived from the monitor's own verified intervals -- no second
+   integration, no raw-sample copy, gaps and sleep never counted.
+2. Passive, low-overhead process-based detection (no injection, hooks, memory
+   access or drivers): a layered identification strategy (user mappings,
+   known executables, launcher metadata, library folders, version metadata for
+   naming), launchers/browsers/capture tools never games.
+3. An explicit, deterministic state machine (NoGame / Candidate / Confirmed /
+   EndingGrace) with documented thresholds, one authoritative gaming context,
+   defined behaviour for multiple processes, helpers, launchers, restarts and
+   crashes.
+4. Manual control: mark as game, exclude, rename, remove; start/stop a
+   session manually (same one-active-session rule).
+5. Schema v4 (additive): `game_mapping`, `gaming_session`,
+   `gaming_session_energy`, single-active-session unique index; crash recovery.
+6. A Gaming page (live session, history with detail, per-game aggregates,
+   mappings) in EN/DE/FA with the same honesty rules (Partial is a lower
+   bound, cost only when valid).
+7. Mathematically careful per-game aggregates (energy-weighted, Complete and
+   Partial never merged).
+8. Measured overhead against the M004 baseline; the anti-cheat safety
+   boundary documented (no claim of universal compatibility).
+
+Out of scope: FPS overlay, frame-time capture, PresentMon, graphics hooks,
+injection, anti-cheat integration, network control, process priority/affinity,
+overclocking, power limits, automatic optimization, Discord, cloud sync,
+accounts, leaderboards, remote monitoring, a Windows Service, a privileged
+helper, auto-start and Smart Plug support.
+
+Status: **implemented and validated** with synthetic processes in the
+automated suite and with stand-in processes on the real packaged app. **No
+real game was run**: the Call of Duty / Warzone validation is a manual
+procedure (`docs/MANUAL_VALIDATION.md` section 7) and is **UNVERIFIED** until
+the user performs it. See `docs/GAMING.md` and `docs/PROJECT_STATE.md`.
+
 ## Later milestones (not started)
 
-Numbering and scope for milestones after 004 are not yet defined in this
+Numbering and scope for milestones after 005 are not yet defined in this
 repository. Items already identified as future work (see
-`docs/PROJECT_STATE.md`): Windows auto-start, a least-privilege privileged
+`docs/PROJECT_STATE.md`): Windows auto-start and a least-privilege privileged
 sensor helper/service so complete CPU monitoring does not require running the
-whole app as Administrator, and gaming-session analytics.
+whole app as Administrator.

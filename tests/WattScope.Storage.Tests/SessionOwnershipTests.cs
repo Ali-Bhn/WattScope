@@ -101,6 +101,7 @@ public class SessionOwnershipTests
             connection.Open();
             foreach (var sql in new[]
             {
+                "DROP TABLE gaming_session_energy;", "DROP TABLE gaming_session;", "DROP TABLE game_mapping;",
                 "DROP INDEX ux_session_single_active;",
                 "INSERT INTO session (id, started_utc_ms, last_observation_utc_ms, status, est_other_watts, est_psu_efficiency, est_include_cpu, est_include_gpu) VALUES (0, 1000, 5000, 0, 50, 0.9, 1, 1);",
                 "INSERT INTO sensor_availability (session_id, channel, state, from_utc_ms) VALUES (0, 0, 0, 1000);",
@@ -115,7 +116,7 @@ public class SessionOwnershipTests
 
         using var migrated = db.Open();
 
-        Assert.Equal(3, migrated.SchemaVersion);
+        Assert.Equal(4, migrated.SchemaVersion);
         Assert.Single(migrated.ListSessions(10), s => s.Status == SessionStatus.Active);
         Assert.Equal(newest, migrated.ListSessions(10).Single(s => s.Status == SessionStatus.Active).Id);   // the newest Active survives
         var closed = migrated.ListSessions(10).Single(s => s.StartedUtc == DateTimeOffset.FromUnixTimeMilliseconds(1000));

@@ -53,6 +53,7 @@ public sealed class EnergyMonitor
     private readonly EnergyIntegrator _integrator;
     private readonly EnergyAccumulator _accumulator = new();
     private readonly Func<ElectricityPriceSchedule>? _priceScheduleProvider;
+    private readonly IMonitorObserver? _observer;
     private ElectricityPriceSchedule? _prices;
 
     private readonly List<PowerSample> _pendingSamples = [];
@@ -75,7 +76,8 @@ public sealed class EnergyMonitor
     /// fresh database query on every call. Omit to keep the previous
     /// (bucket-start-price-only) behavior.
     /// </param>
-    public EnergyMonitor(IEnergyStore store, EnergyMonitorOptions? options = null, TimeProvider? timeProvider = null, ILogger<EnergyMonitor>? logger = null, Func<ElectricityPriceSchedule>? priceScheduleProvider = null)
+    /// <param name="observer">Optional listener told about every accepted sample (see <see cref="IMonitorObserver"/>). Its failures are logged, never propagated.</param>
+    public EnergyMonitor(IEnergyStore store, EnergyMonitorOptions? options = null, TimeProvider? timeProvider = null, ILogger<EnergyMonitor>? logger = null, Func<ElectricityPriceSchedule>? priceScheduleProvider = null, IMonitorObserver? observer = null)
     {
         _store = store;
         _options = options ?? new EnergyMonitorOptions();
@@ -83,6 +85,7 @@ public sealed class EnergyMonitor
         _logger = logger;
         _integrator = new EnergyIntegrator(_options.Integration);
         _priceScheduleProvider = priceScheduleProvider;
+        _observer = observer;
         _prices = priceScheduleProvider?.Invoke();
     }
 
@@ -175,6 +178,7 @@ public sealed class EnergyMonitor
 
             TrackAvailability(EnergyChannel.CpuPackage, sample.CpuPackage.State, sample.UtcTime);
             TrackAvailability(EnergyChannel.GpuBoard, sample.GpuBoard.State, sample.UtcTime);
+            Notify(o => o.OnSample(sample, step));
 
             if (_options.PersistRawSamples)
             {
@@ -209,6 +213,7 @@ public sealed class EnergyMonitor
             _integrator.BreakChain(GapReason.Suspend, detail: "Operating system suspend/resume.");
             _suspended = true;
             FlushLocked();
+            Notify(o => o.OnSuspended());
         }
     }
 
@@ -230,6 +235,22 @@ public sealed class EnergyMonitor
             _integrator.BreakChain(GapReason.Suspend, detail: "Operating system suspend/resume.");
             _suspended = false;
             _lastFlushMonotonic = null;
+            Notify(o => o.OnResumed());
+        }
+    }
+
+    private void Notify(Action<IMonitorObserver> call)
+    {
+        if (_observer is null)
+            return;
+        try
+        {
+            call(_observer);
+        }
+        catch (Exception ex)
+        {
+            // An observer is an add-on (gaming analytics): it must never be able to break energy recording.
+            _logger?.LogError(ex, "A monitor observer failed; monitoring continues.");
         }
     }
 

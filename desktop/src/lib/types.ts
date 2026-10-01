@@ -41,6 +41,8 @@ export interface TickMessage {
   sessionCostApprox: number | null;
   currency: string | null;
   elevated: boolean;
+  /** The current gaming context (small summary), or null when there is none. Detection itself happens in the sidecar, never in the UI. */
+  gaming: GamingLiveState | null;
 }
 
 export interface StatusMessage {
@@ -170,4 +172,119 @@ export interface MonitoringSnapshot {
   intervalMs: number;
   lastTick: TickMessage | null;
   alreadyRunning: boolean;
+}
+
+// ---------------------------------------------------------------- gaming (Milestone 005)
+
+export type GamingPhase = "candidate" | "active" | "ending";
+export type GamingCostStatus = "priced" | "withheldPartial" | "withheldUnpriced" | "noEstimate";
+export type GameDetectionSource = "userMapping" | "knownCatalog" | "launcherChild" | "libraryPath" | "manual";
+export type GamingSessionStatus = "active" | "ended" | "interrupted";
+export type GamingEndReason = "processExited" | "manualStop" | "monitoringStopped" | "interrupted" | "excluded";
+export type GameMappingKind = "game" | "excluded";
+
+export interface GamingLiveState {
+  state: GamingPhase;
+  sessionId: number | null;
+  gameName: string;
+  exeName: string;
+  isManual: boolean;
+  source: GameDetectionSource;
+  startedUtc: string;
+  durationSeconds: number;
+  monitoredSeconds: number;
+  completeness: EstimateCompleteness;
+  /** Estimated system energy so far; a lower bound when systemIsLowerBound. */
+  systemKwh: number;
+  systemIsLowerBound: boolean;
+  costStatus: GamingCostStatus;
+  cost: number | null;
+  currency: string | null;
+}
+
+export interface GamingSessionSummary {
+  id: number;
+  monitoringSessionId: number;
+  gameKey: string;
+  exeName: string;
+  displayName: string;
+  source: GameDetectionSource;
+  isManual: boolean;
+  startedUtc: string;
+  endedUtc: string | null;
+  status: GamingSessionStatus;
+  endReason: GamingEndReason | null;
+  durationSeconds: number;
+  monitoredSeconds: number;
+  totals: EnergyTotals;
+  completeness: EstimateCompleteness;
+  avgCpuWatts: number | null;
+  avgGpuWatts: number | null;
+  avgSystemWatts: number | null;
+  peakCpuWatts: number | null;
+  peakGpuWatts: number | null;
+  peakSystemWatts: number | null;
+  systemJoules: number;
+  systemIsLowerBound: boolean;
+  costStatus: GamingCostStatus;
+  cost: number | null;
+  lowerBoundCost: number | null;
+  currency: string | null;
+  costPrecision: PriceAllocationPrecision;
+}
+
+export interface GamingSessionDetail {
+  summary: GamingSessionSummary;
+  exePath: string | null;
+  lastObservationUtc: string | null;
+  gaps: { count: number; seconds: number; items: { reason: string; startUtc: string; endUtc: string; seconds: number }[] };
+  cost: CostBreakdown;
+}
+
+export interface GameAggregateGroup {
+  sessions: number;
+  monitoredSeconds: number;
+  systemJoules: number;
+  avgSystemWatts: number | null;
+  cost: number | null;
+  unpricedSessions: number;
+}
+
+export interface GameAggregate {
+  gameKey: string;
+  displayName: string;
+  sessionCount: number;
+  totalDurationSeconds: number;
+  totalMonitoredSeconds: number;
+  averageSessionDurationSeconds: number;
+  avgCpuWatts: number | null;
+  avgGpuWatts: number | null;
+  peakCpuWatts: number | null;
+  peakGpuWatts: number | null;
+  complete: GameAggregateGroup;
+  partial: GameAggregateGroup;
+  noEstimateSessions: number;
+  currency: string | null;
+}
+
+export interface GameMapping {
+  id: number;
+  exeName: string;
+  exePath: string;
+  kind: GameMappingKind;
+  displayName: string | null;
+  updatedUtc: string;
+}
+
+export interface GamingStateResponse {
+  available: boolean;
+  monitoring: boolean;
+  live: GamingLiveState | null;
+  pollIntervalSeconds: number | null;
+}
+
+export interface RunningExecutable {
+  exeName: string;
+  exePath: string | null;
+  instances: number;
 }

@@ -20,6 +20,7 @@ const baseTick: TickMessage = {
   sessionCostApprox: 0.003,
   currency: "EUR",
   elevated: true,
+  gaming: null,
 };
 
 const partialTick: TickMessage = {

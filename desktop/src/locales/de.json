@@ -4,6 +4,7 @@
   },
   "nav": {
     "dashboard": "Übersicht",
+    "gaming": "Gaming",
     "reports": "Berichte",
     "settings": "Einstellungen"
   },
@@ -61,6 +62,115 @@
     "gpu": "GPU",
     "total": "Geschätzt gesamt",
     "noData": "Warte auf Messwerte..."
+  },
+  "gaming": {
+    "title": "Gaming",
+    "sessionTitle": "Spielsitzung",
+    "live": "LIVE",
+    "ending": "ENDET",
+    "manualBadge": "Manuell",
+    "autoBadge": "Automatisch erkannt",
+    "noGame": "Kein Spiel erkannt",
+    "noGameHelp": "Ein Spiel wird erkannt, solange die Überwachung läuft. Launcher, Browser und andere Programme zählen nicht als Spiele.",
+    "needsMonitoring": "Die Überwachung ist gestoppt. Spiele werden nur erkannt, solange WattScope überwacht.",
+    "detecting": "Mögliches Spiel, wird bestätigt:",
+    "running": "Läuft",
+    "duration": "Dauer",
+    "monitored": "Überwacht",
+    "gpuPower": "GPU-Leistung",
+    "cpuPower": "CPU-Leistung",
+    "systemPower": "Geschätzte Systemleistung",
+    "energy": "Energie",
+    "cost": "Geschätzte Kosten",
+    "lowerBound": "Untere Grenze (teilweise)",
+    "cpuUnavailable": "Nicht verfügbar",
+    "partialBanner": "Teilweise: Die CPU-Leistung ist nicht verfügbar. Energie und Systemleistung sind daher untere Grenzen, und es werden keine vollständigen Kosten angezeigt. Die GPU-Werte sind weiterhin gemessen.",
+    "costStatus": {
+      "withheldPartial": "Nicht angezeigt: Die Schätzung ist unvollständig",
+      "withheldUnpriced": "Nicht angezeigt: Kein Strompreis deckt diese Energie ab",
+      "noEstimate": "Keine Schätzung verfügbar"
+    },
+    "endReason": {
+      "processExited": "Spiel beendet",
+      "manualStop": "Manuell gestoppt",
+      "monitoringStopped": "Überwachung gestoppt",
+      "interrupted": "Unterbrochen (WattScope wurde unerwartet beendet)",
+      "excluded": "Von Ihnen ausgeschlossen"
+    },
+    "source": {
+      "userMapping": "Von Ihnen als Spiel markiert",
+      "knownCatalog": "Bekanntes Spiel",
+      "launcherChild": "Von einem Spiele-Launcher gestartet",
+      "libraryPath": "In einem Spielebibliotheks-Ordner gefunden",
+      "manual": "Manuell gestartet"
+    },
+    "manual": {
+      "start": "Spielsitzung manuell starten",
+      "stop": "Manuelle Spielsitzung beenden",
+      "help": "Nutzen Sie dies, wenn ein Spiel nicht automatisch erkannt wird. Die Sitzung folgt denselben Überwachungs- und Energieregeln wie eine automatische.",
+      "name": "Spielname",
+      "exe": "Programm (optional)",
+      "remember": "Dieses Programm künftig automatisch erkennen",
+      "begin": "Sitzung starten",
+      "requiresMonitoring": "Zuerst die Überwachung starten"
+    },
+    "history": {
+      "title": "Spielverlauf",
+      "none": "Noch keine Spielsitzungen aufgezeichnet.",
+      "game": "Spiel",
+      "start": "Beginn",
+      "end": "Ende",
+      "duration": "Dauer",
+      "monitored": "Überwacht",
+      "unmonitored": "Nicht überwacht",
+      "energy": "Energie",
+      "cost": "Kosten",
+      "lowerBoundCost": "Kosten (untere Grenze)",
+      "costStatus": "Kostenstatus",
+      "completeness": "Vollständigkeit",
+      "gaps": "Überwachungslücken",
+      "endReason": "Beendet",
+      "source": "Erkannt durch",
+      "executable": "Programm",
+      "avgCpu": "Mittlere CPU-Leistung",
+      "avgGpu": "Mittlere GPU-Leistung",
+      "avgSystem": "Mittlere Systemleistung (geschätzt)",
+      "peakCpu": "Spitzen-CPU-Leistung",
+      "peakGpu": "Spitzen-GPU-Leistung",
+      "peakSystem": "Spitzen-Systemleistung (geschätzt)",
+      "lowerBoundNote": "Diese Sitzung ist teilweise erfasst: Mit ≥ markierte Werte sind untere Grenzen, keine vollständigen Schätzungen.",
+      "approxPrice": "* Näherungswert: Ein Preis wurde nach der Aufzeichnung dieser Sitzung hinzugefügt, daher werden die Kosten nach Zeit aufgeteilt, nicht nach Messung."
+    },
+    "aggregates": {
+      "title": "Pro Spiel",
+      "help": "Vollständige und teilweise Sitzungen werden nie addiert. Mittelwerte sind zeitgewichtet, nicht pro Sitzung gemittelt.",
+      "sessions": "Sitzungen",
+      "sessionsShort": "Sitzungen",
+      "playTime": "Spielzeit",
+      "monitored": "Überwacht",
+      "avgSession": "Mittlere Sitzung",
+      "complete": "Vollständige Sitzungen",
+      "partial": "Teilweise Sitzungen",
+      "unpriced": "ohne Preis",
+      "noCost": "keine Kosten"
+    },
+    "games": {
+      "title": "Spiele verwalten",
+      "help": "Markieren Sie ein Programm als Spiel, geben Sie ihm einen Namen oder schließen Sie es von der Erkennung aus. Ihre Auswahl wird nur auf diesem Computer gespeichert.",
+      "exe": "Programm",
+      "name": "Spielname",
+      "kind": "Aktion",
+      "kindGame": "Ist ein Spiel",
+      "kindExcluded": "Nie ein Spiel",
+      "add": "Speichern",
+      "remove": "Entfernen",
+      "pick": "Laufendes Programm auswählen",
+      "pickNone": "Es laufen keine infrage kommenden Programme.",
+      "empty": "Noch keine Programme markiert.",
+      "rename": "Umbenennen",
+      "exclude": "Dieses Programm nie erkennen",
+      "privacyNote": "Die Erkennung liest nur die Liste der laufenden Programme. WattScope berührt weder den Speicher noch die Dateien eines Spiels und interagiert nicht mit dem Spiel."
+    }
   },
   "reports": {
     "title": "Berichte",
@@ -123,6 +233,7 @@
     "watts": "W",
     "kwh": "kWh",
     "seconds": "s",
-    "close": "Schließen"
+    "close": "Schließen",
+    "na": "n. v."
   }
 }

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using WattScope.Core.Energy;
 using WattScope.Core.Estimation;
 using WattScope.Core.Monitoring;
@@ -97,6 +97,7 @@ public sealed class MonitoringController : IAsyncDisposable
     private readonly MonitoringControllerOptions _options;
     private readonly Action<object> _emit;
     private readonly ILogger _logger;
+    private readonly GamingService? _gaming;
     private Run? _run;
     private TickMessage? _lastTick;
     private int _lastIntervalMs;
@@ -104,8 +105,9 @@ public sealed class MonitoringController : IAsyncDisposable
     private readonly IReadOnlyList<EnergySensorBinding> _bindingList;
 
     /// <param name="bindings">The channel-to-sensor bindings fixed once from discovery; stored with each session.</param>
-    public MonitoringController(SqliteEnergyStore recordingStore, ISampleSource source, IReadOnlyList<EnergySensorBinding> bindings, MonitoringControllerOptions options, Action<object> emit, ILogger logger)
+    public MonitoringController(SqliteEnergyStore recordingStore, ISampleSource source, IReadOnlyList<EnergySensorBinding> bindings, MonitoringControllerOptions options, Action<object> emit, ILogger logger, GamingService? gaming = null)
     {
+        _gaming = gaming;
         _store = recordingStore;
         _source = source;
         _bindingList = bindings;
@@ -181,7 +183,8 @@ public sealed class MonitoringController : IAsyncDisposable
             var monitor = new EnergyMonitor(_store,
                 new EnergyMonitorOptions { Integration = IntegrationOptions.ForSamplingInterval(timeSpan), FlushInterval = _options.FlushInterval },
                 logger: null,
-                priceScheduleProvider: _store.GetPriceSchedule);
+                priceScheduleProvider: _store.GetPriceSchedule,
+                observer: _gaming?.Tracker);
 
             MonitoringSession session;
             try
@@ -197,6 +200,7 @@ public sealed class MonitoringController : IAsyncDisposable
             }
 
             var run = new Run { Monitor = monitor, Session = session, Cts = new CancellationTokenSource(), IntervalMs = interval };
+            _gaming?.Attach(session);
             var displayPrices = _store.GetPriceSchedule();
             lock (_stateLock)
             {
@@ -224,12 +228,13 @@ public sealed class MonitoringController : IAsyncDisposable
     }
 
     /// <summary>Stops monitoring (flushes and marks the session Stopped). A no-op when idle.</summary>
-    public async Task<MonitoringSnapshot> StopAsync(string reason = "Stopped by user")
+    /// <param name="keepGamingSession">True only for an interval change, which restarts the run inside the same monitoring session: an open gaming session is then kept instead of ended.</param>
+    public async Task<MonitoringSnapshot> StopAsync(string reason = "Stopped by user", bool keepGamingSession = false)
     {
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await StopLockedAsync(reason).ConfigureAwait(false);
+            await StopLockedAsync(reason, keepGamingSession).ConfigureAwait(false);
             return Snapshot();
         }
         finally
@@ -238,7 +243,7 @@ public sealed class MonitoringController : IAsyncDisposable
         }
     }
 
-    private async Task StopLockedAsync(string reason)
+    private async Task StopLockedAsync(string reason, bool keepGamingSession = false)
     {
         Run? run;
         lock (_stateLock) run = _run;
@@ -249,6 +254,8 @@ public sealed class MonitoringController : IAsyncDisposable
         try { await run.Loop.ConfigureAwait(false); }
         catch (Exception ex) { _logger.LogWarning(ex, "Sampling loop ended with an error while stopping."); }
 
+        // Gaming first: its session is attributed to this monitoring session and ends with it.
+        _gaming?.Detach(keepGamingSession);
         var saved = run.Monitor.Stop(reason);
         lock (_stateLock)
         {
@@ -357,7 +364,8 @@ public sealed class MonitoringController : IAsyncDisposable
                 ? CostCalculator.Cost(totals.EstimatedCompleteJoules, price.PricePerKwh)
                 : null,
             Currency = prices.Currency,
-            Elevated = _options.Elevated
+            Elevated = _options.Elevated,
+            Gaming = _gaming?.Tracker.Live()
         };
     }
 
@@ -368,3 +376,4 @@ public sealed class MonitoringController : IAsyncDisposable
         _gate.Dispose();
     }
 }
+

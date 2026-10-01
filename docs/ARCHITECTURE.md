@@ -21,9 +21,16 @@
   **Automatic Windows startup and a least-privilege privileged sensor
   helper/service are intentionally deferred** (see "Privilege model").
 
-There is still no gaming analytics -- that remains a future milestone, built
-on top of `WattScope.Core`'s abstractions without needing to know
-LibreHardwareMonitor, NVML, or SQLite exist.
+- **Milestone 005:** gaming session detection and energy analytics, built
+  on top of the existing monitoring pipeline: passive process-based game
+  detection with an explicit state machine, `GamingSession` (distinct from the
+  monitoring session) with energy derived from the monitor's own verified
+  intervals, per-game aggregates, user mappings, manual sessions, a Gaming
+  page. Entirely external and passive -- no injection, hooks or memory access.
+  See `docs/GAMING.md` and "Gaming (Milestone 005)" below.
+
+Nothing here knows about FPS, frame times or anti-cheat integration; those are
+not part of this project.
 
 ## Projects
 
@@ -277,6 +284,43 @@ Milestone 002 crash recovery is the final safety net: an `Active` session
 with no live recorder is closed as `Interrupted` at its last persisted
 observation. Whether Windows logoff/shutdown/restart reliably reaches these
 handlers was **not** verified (it needs a real logoff); see PROJECT_STATE.md.
+## Gaming (Milestone 005)
+
+Full design: `docs/GAMING.md`. In short:
+
+```
+WindowsProcessSource (toolhelp snapshot, cached; WattScope.Hardware)
+        | every 5 s, only while monitoring  (GamingService poll loop, WattScope.Probe)
+        v
+GameDetector (state machine) <-- GameIdentifier (mappings, catalog, launcher/library heuristics)
+        | events: candidate / confirmed / grace / ended
+        v
+GamingSessionTracker  <-- IMonitorObserver: every accepted sample + the integrator's
+        |                  verified interval or gap (EnergyMonitor, unchanged otherwise)
+        |  GamingLedger: per-price EnergyTotals + peaks (no raw samples)
+        v
+IGamingStore (SqliteEnergyStore, a third connection) -- gaming_session, gaming_session_energy, game_mapping
+        |
+        v
+tick.gaming (small live summary) + get_gaming_* requests --> the Gaming page (display only)
+```
+
+Ownership rules: one Active monitoring session and one Active gaming session
+per database (unique partial indexes); the tracker owns the single gaming
+context; `EnergyMonitor` is unchanged apart from an optional observer hook
+whose failures are logged and contained. Core stays UI-agnostic and
+process-model-agnostic: `IProcessSource` and `IExecutableMetadata` are the only
+seams to the OS, and tests drive the whole thing with synthetic processes and
+samples. The Rust host did not change: it forwards ticks unchanged, so the
+`gaming` field reaches the webview without host code.
+
+Lifecycle: `MonitoringController` attaches the gaming service to each run
+(`GamingService.Attach`) and detaches it before the monitoring session stops;
+an interval change keeps an open gaming session (the same monitoring session
+continues with a recorded `Paused` gap). After a sidecar crash the orphaned
+gaming session is recovered as `Interrupted` together with its monitoring
+session, and a game that is still running is detected afresh.
+
 ## Provider notes
 
 - **LibreHardwareMonitorProvider** wraps a single `LibreHardwareMonitor.Hardware.Computer`,

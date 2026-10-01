@@ -3,7 +3,11 @@
 Local SQLite persistence for energy monitoring (Milestone 002), implemented
 in `WattScope.Storage` (`SqliteEnergyStore`, `Microsoft.Data.Sqlite`). No
 cloud or network dependency. Default location:
-`%LOCALAPPDATA%\WattScope\wattscope.db` (override with `--db <path>`).
+`%LOCALAPPDATA%\WattScope\wattscope.db` (override with `--db <path>`, or for
+a whole process tree -- the desktop app and its sidecar -- with the
+`WATTSCOPE_DB` environment variable, which exists so validation runs never
+touch real history; a plain `LOCALAPPDATA` override does **not** work, the
+path comes from the Windows known-folder API).
 
 ## What is stored -- and what deliberately is not
 
@@ -24,6 +28,9 @@ is unchanged and never writes to the database.
 | `electricity_price` | effective-from, price as exact decimal text, currency | 1 row per price change |
 | `estimation_settings` | settings history; latest row is current | 1 row per change |
 | `app_setting` | key/value (raw retention days) | constant |
+| `gaming_session` | one row per gaming session: monitoring session, game identity, source, manual flag, time span, status, end reason, peak power (Milestone 005) | 1 row per gaming session; kept |
+| `gaming_session_energy` | per gaming session per electricity price: the energy totals and the time span they cover | ~1-2 rows per gaming session; kept |
+| `game_mapping` | the user's decisions about executables (game / excluded / name) | 1 row per mapping |
 
 Costs are **not** stored: they are computed at report time from energy
 buckets and the price history, so they always reflect the documented
@@ -90,12 +97,13 @@ Forward-only migrations in `SchemaMigrations`, tracked in
 transaction. Opening a database whose version is newer than the build
 supports fails with `DatabaseSchemaTooNewException` without modifying it.
 Released migrations must never be edited; add a new one instead.
-Current version: **3**.
+Current version: **4**.
 
 | Version | Added | Milestone |
 |---|---|---|
 | 1 | initial schema: sessions, samples, buckets, gaps, availability, prices, settings | 002 |
 | 2 | `bucket_price_split` -- one row per (bucket, price) actually observed while recording, for sub-bucket electricity pricing (`docs/ENERGY_MODEL.md` section 4) | 003 |
+| 4 | `game_mapping`, `gaming_session` (with `ux_gaming_single_active`: at most one Active gaming session) and `gaming_session_energy`. Purely additive; M001-M004 tables and rows are untouched. See `docs/GAMING.md` section 7 | 005 |
 | 3 | `ux_session_single_active` -- a partial unique index guaranteeing **at most one `Active` session per database**. A database that already holds several `Active` sessions (orphans of crashed recorders) is repaired first: all but the newest are closed as `Interrupted` at their last persisted observation, the same rule crash recovery uses | 004 |
 
 ## Session ownership (Milestone 004)

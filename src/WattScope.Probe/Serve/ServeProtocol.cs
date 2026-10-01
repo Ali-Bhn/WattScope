@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace WattScope.Probe.Serve;
@@ -62,6 +62,22 @@ public sealed record ServeRequest
 
     /// <summary>start_monitoring: continue an existing session (default: latest) instead of opening a new one.</summary>
     public bool? Resume { get; init; }
+
+    // Gaming (Milestone 005)
+    public long? GamingSessionId { get; init; }
+    public string? GameKey { get; init; }
+    public int? Limit { get; init; }
+
+    /// <summary>File name (<c>cod.exe</c>) -- or a full path, which is split into name + path.</summary>
+    public string? ExeName { get; init; }
+    public string? ExePath { get; init; }
+
+    /// <summary>"game" or "excluded".</summary>
+    public WattScope.Core.Gaming.GameMappingKind? MappingKind { get; init; }
+    public string? DisplayName { get; init; }
+
+    /// <summary>start_manual_gaming: also remember the executable as a game so it is detected automatically next time.</summary>
+    public bool? RememberAsGame { get; init; }
 }
 
 public sealed record ServeResponse
@@ -87,3 +103,4 @@ public sealed record StatusMessage
     public bool? GpuAvailable { get; init; }
     public string? Message { get; init; }
 }
+

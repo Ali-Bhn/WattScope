@@ -26,6 +26,8 @@ public static class DatabaseCommands
             CliCommand.Estimation => Estimation(options, store),
             CliCommand.Retention => Retention(options, store),
             CliCommand.DbInfo => DbInfo(store),
+            CliCommand.Gaming => GamingCommands.List(store),
+            CliCommand.GameMark or CliCommand.GameExclude or CliCommand.GameUnmark => GamingCommands.Mapping(options, store),
             _ => throw new ArgumentOutOfRangeException(nameof(options))
         };
     }

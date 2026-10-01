@@ -54,6 +54,34 @@ describe("localization", () => {
     expect(languages.fa["settings.background.description"]).toMatch(/[؀-ۿ]/);
   });
 
+  it("localizes every Gaming string in German and Persian (not left in English)", () => {
+    const gamingKeys = Object.keys(english).filter((k) => k.startsWith("gaming."));
+    expect(gamingKeys.length).toBeGreaterThan(80);
+    // Technical tokens that legitimately stay Latin may match English; everything else must differ.
+    const sameAllowed = new Set(["gaming.title", "gaming.live", "gaming.history.title"]);
+    for (const key of gamingKeys) {
+      if (sameAllowed.has(key)) continue;
+      expect(languages.de[key], `de ${key}`).not.toBe(english[key]);
+      expect(languages.fa[key], `fa ${key}`).not.toBe(english[key]);
+    }
+  });
+
+  it("writes Persian gaming strings in Persian script while keeping CPU, GPU, W and kWh tokens readable", () => {
+    for (const key of Object.keys(english).filter((k) => k.startsWith("gaming."))) {
+      expect(languages.fa[key], key).toMatch(/[؀-ۿ]/);
+    }
+    expect(languages.fa["gaming.gpuPower"]).toContain("GPU");
+    expect(languages.fa["gaming.cpuPower"]).toContain("CPU");
+    expect(languages.fa["gaming.history.avgCpu"]).toContain("CPU");
+  });
+
+  it("has the Gaming navigation entry in every language", () => {
+    for (const strings of [english, ...Object.values(languages)]) {
+      expect(strings["nav.gaming"]).toBeTruthy();
+      expect(strings["common.na"]).toBeTruthy();
+    }
+  });
+
   it("has no leftover strings for the removed elevation button", () => {
     for (const strings of [english, ...Object.values(languages)]) {
       expect(strings["settings.restartElevated"]).toBeUndefined();

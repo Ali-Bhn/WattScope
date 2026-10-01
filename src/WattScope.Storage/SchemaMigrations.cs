@@ -180,6 +180,72 @@ internal static class SchemaMigrations
               AND session_id IN (SELECT id FROM session WHERE status <> 0);
 
             CREATE UNIQUE INDEX ux_session_single_active ON session(status) WHERE status = 0;
+            """),
+
+        // Gaming sessions (Milestone 005). Purely additive: no M001-M004 table or
+        // row is touched. A gaming session belongs to a monitoring session and
+        // stores only identity, time span, peaks and per-price energy totals --
+        // never raw samples (the energy is derived from the same verified
+        // intervals the 15-minute buckets are, see docs/GAMING.md).
+        new(4, "Gaming sessions and game mappings", """
+            -- The user's decisions about executables: mark as game, exclude, rename.
+            -- exe_path '' means "this executable name, wherever it is".
+            CREATE TABLE game_mapping (
+                id             INTEGER PRIMARY KEY,
+                exe_name       TEXT    NOT NULL COLLATE NOCASE CHECK (length(exe_name) > 0),
+                exe_path       TEXT    NOT NULL COLLATE NOCASE DEFAULT '',
+                kind           INTEGER NOT NULL CHECK (kind IN (1, 2)),
+                display_name   TEXT,
+                created_utc_ms INTEGER NOT NULL,
+                updated_utc_ms INTEGER NOT NULL,
+                UNIQUE (exe_name, exe_path)
+            );
+
+            CREATE TABLE gaming_session (
+                id                      INTEGER PRIMARY KEY,
+                monitoring_session_id   INTEGER NOT NULL REFERENCES session(id),
+                game_key                TEXT    NOT NULL,
+                exe_name                TEXT    NOT NULL,
+                exe_path                TEXT,
+                display_name            TEXT    NOT NULL,
+                detection_source        INTEGER NOT NULL CHECK (detection_source BETWEEN 0 AND 4),
+                is_manual               INTEGER NOT NULL CHECK (is_manual IN (0, 1)),
+                started_utc_ms          INTEGER NOT NULL,
+                ended_utc_ms            INTEGER,
+                last_observation_utc_ms INTEGER,
+                status                  INTEGER NOT NULL CHECK (status IN (0, 1, 2)),
+                end_reason              INTEGER CHECK (end_reason IS NULL OR end_reason BETWEEN 0 AND 4),
+                peak_cpu_w              REAL,
+                peak_gpu_w              REAL,
+                peak_system_complete_w  REAL,
+                peak_system_partial_w   REAL,
+                CHECK (status = 0 OR ended_utc_ms IS NOT NULL),
+                CHECK (ended_utc_ms IS NULL OR ended_utc_ms >= started_utc_ms)
+            );
+            CREATE INDEX ix_gaming_session_game ON gaming_session(game_key, started_utc_ms);
+            CREATE INDEX ix_gaming_session_started ON gaming_session(started_utc_ms);
+            CREATE INDEX ix_gaming_session_monitoring ON gaming_session(monitoring_session_id);
+            -- At most one authoritative gaming session may be active in a database.
+            CREATE UNIQUE INDEX ux_gaming_single_active ON gaming_session(status) WHERE status = 0;
+
+            -- Energy of a gaming session per electricity price (the price in effect when it was consumed).
+            -- price_effective_utc_ms = -1 means "consumed before any price existed" (unpriced).
+            CREATE TABLE gaming_session_energy (
+                gaming_session_id      INTEGER NOT NULL REFERENCES gaming_session(id) ON DELETE CASCADE,
+                price_effective_utc_ms INTEGER NOT NULL,
+                first_utc_ms           INTEGER NOT NULL,
+                last_utc_ms            INTEGER NOT NULL,
+                monitored_s            REAL NOT NULL,
+                cpu_j                  REAL NOT NULL,
+                cpu_s                  REAL NOT NULL,
+                gpu_j                  REAL NOT NULL,
+                gpu_s                  REAL NOT NULL,
+                est_complete_j         REAL NOT NULL,
+                est_complete_s         REAL NOT NULL,
+                est_partial_j          REAL NOT NULL,
+                est_partial_s          REAL NOT NULL,
+                PRIMARY KEY (gaming_session_id, price_effective_utc_ms)
+            ) WITHOUT ROWID;
             """)
     ];
 

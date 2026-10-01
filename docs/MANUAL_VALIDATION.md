@@ -16,6 +16,7 @@ anything not run there is marked **UNVERIFIED**.
 | 4 | Administrator launch | UNVERIFIED |
 | 5 | Persian / RTL visual check | Verified on a real-window screenshot of the Settings page (`PROJECT_STATE.md`); the other pages were not re-inspected |
 | 6 | Installers | UNVERIFIED (packages build; installing/uninstalling was not run) |
+| 7 | Gaming session with a real game (Call of Duty / Warzone via Battle.net) | **UNVERIFIED** -- not run; the automated suite and the non-game real validation (`PROJECT_STATE.md`, Milestone 005) are done, but no real game was launched |
 
 All procedures use the packaged app (`desktop/src-tauri/target/release/wattscope.exe`
 or the installed one) and the CLI that ships beside it
@@ -125,3 +126,65 @@ is deliberately not mirrored).
   startup entry or scheduled task was ever created (check
   `Task Manager -> Startup`, `services.msc`); `%LOCALAPPDATA%\WattScope`
   (the monitoring history) is left in place.
+
+## 7. Gaming session (Call of Duty / Warzone through Battle.net)
+
+This is the real-game validation of Milestone 005. **WattScope never launches
+a game or touches Battle.net** -- you start the game yourself, normally. Run
+it twice if you can: once as a normal user (expect a **Partial** session) and
+once with WattScope started via *Run as administrator* (expect **Complete**).
+Set an electricity price first (Settings) if you want to see a cost.
+
+1. **Launcher alone.** Launch WattScope. On the *Gaming* page it says *No game
+   detected*. Open Battle.net (do not start a game) and leave it open for 2+
+   minutes. Expected: still *No game detected*; `wattscope-probe.exe --gaming`
+   lists no new session. (A launcher is never a game.)
+2. **Start the game** from Battle.net. Note the time. In Task Manager ->
+   Details note the **executable name** of the game process (for example
+   `cod.exe`) -- write it down; it is the most useful finding of this test.
+3. **Detection.** Within about 25-70 s the page shows *Possible game,
+   confirming: ...* and then the *Gaming Session* card with the game name and
+   **LIVE** (a catalog/mapped executable confirms after ~20 s; a heuristic guess
+   after ~60 s). If nothing appears after 2 minutes: *Manage games* -> *Pick
+   a running program* -> choose the game's executable, name it
+   (e.g. "Call of Duty: Warzone"), *Save*, and note that automatic detection
+   needed help. A wrong name can be corrected the same way (*Rename* in the
+   session's detail panel renames every stored session of that game).
+4. **While playing (>= 10 minutes):** the duration counts up; GPU power is
+   plausible for the load; CPU power shows a value when elevated and `--` with
+   *Unavailable* when not; estimated system power and energy rise; the cost
+   is shown only for a Complete session (otherwise *n/a* with the reason);
+   unelevated, the amber *Partial* banner is shown and energy is marked `>=`.
+   The dashboard chart and the tray keep updating (monitoring continues).
+   Closing the WattScope window to the tray must not stop either.
+5. **One session.** While playing run `wattscope-probe.exe --gaming`: exactly
+   one session, `Active`, the right name, started within ~5 s of when you
+   launched the game's process (not 20-60 s later).
+6. **Close the game** (exit it fully; leave Battle.net open). Wait ~45 s. The
+   card returns to *No game detected* about 30-35 s after the game closed (the
+   end grace period). Re-launching the game within 30 s of closing it must
+   continue the **same** session.
+7. **History.** *Gaming history* shows the session; `--gaming` shows it as
+   `Ended: ProcessExited` with an end time within ~5 s of when you closed
+   the game (**not** 30 s later), `duration` ~ `monitored` (unless you slept),
+   and the per-game totals.
+8. **Plausibility.** Energy ~ average system power x monitored time (for
+   example 340 W for 1 h = 0.34 kWh; the cost = kWh x your price). Peaks are
+   >= averages. GPU average is in the range you see in other tools.
+9. **Partial vs Complete.** Unelevated: Partial, CPU `--`/`n/a`, energy and
+   system power marked `>=`, **no** cost (a lower-bound cost may appear in
+   the detail panel, labelled). Elevated: Complete, a cost if a price covers
+   the session.
+10. *Optional:* put the PC to sleep mid-game and wake it. Same session; its
+    duration includes the sleep, `monitored` does not; the detail panel shows a
+    monitoring gap.
+
+Pass: steps 1, 3, 5, 6, 7 and 9 behave as stated, and the numbers in 8 are
+plausible. Record in `docs/PROJECT_STATE.md`: the game's executable name, how
+long detection took, whether manual correction was needed, and elevated /
+unelevated results. Anything not run stays **UNVERIFIED**.
+
+If WattScope is run alongside a game protected by an anti-cheat, remember
+that this project makes **no** claim of compatibility with any specific
+anti-cheat (`docs/GAMING.md`, "Anti-cheat safety boundary"). If the game or its
+anti-cheat objects, close WattScope.
