@@ -53,6 +53,17 @@ body {
   }
 }
 
+/* Windows high contrast replaces every background, which is the only thing that marks the open page and the
+   selected tab. Mark them with the system's own selection colours instead. */
+@media (forced-colors: active) {
+  nav [aria-current="page"],
+  [role="tab"][aria-selected="true"] {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+}
+
 .card {
   @apply rounded-card border border-surface-border bg-surface-1 p-4 shadow-sm;
 }
