@@ -52,11 +52,11 @@ implementation. Items added by that audit are marked *(added)*.
 
 | # | Item | Status |
 |---|---|---|
-| B1 | A Complete (not Partial) monitoring session when launched with *Run as administrator*: CPU package power valid, system power labelled estimated, session energy Complete, cost shown when a price exists | UNVERIFIED |
+| B1 | A Complete (not Partial) monitoring session when launched with *Run as administrator*: CPU package power valid, system power labelled estimated, session energy Complete, cost shown when a price exists | PASSED 2026-10-02 (user-run, session #20; `PROJECT_STATE.md` Phase 6) |
 | B2 | A Complete gaming session under Administrator (cost shown, no `>=`) | UNVERIFIED |
 | B3 | Unelevated launch shows Partial with the explanation and no cost | PASSED 2026-10-02 on the release build, real WebView2, EN/DE/FA (dashboard, reports, gaming live card) |
-| B4 | *(added)* Elevated launch: UAC is user initiated, still exactly one host and one sidecar, a second (unelevated) launch does not create a second instance | UNVERIFIED |
-| B5 | *(added)* Elevated launch: Exit closes every owned process and the session persists as `Stopped` | UNVERIFIED |
+| B4 | *(added)* Elevated launch: UAC is user initiated, still exactly one host and one sidecar, a second (unelevated) launch does not create a second instance | PARTLY 2026-10-02: UAC user initiated, one host, one owned sidecar. The second (unelevated) launch was not tried |
+| B5 | *(added)* Elevated launch: Exit closes every owned process and the session persists as `Stopped` | PASSED 2026-10-02 (tray -> Exit; 0 processes left; #20 `Stopped`, integrity ok; CLI summary agrees with the UI) |
 
 ## C. Installers
 
@@ -88,7 +88,7 @@ implementation. Items added by that audit are marked *(added)*.
 
 | # | Item | Status |
 |---|---|---|
-| E1 | Native tray menu: every item, language follows the UI, Start/Stop enable/disable, Exit | UNVERIFIED (only tray -> Exit, in M004) |
+| E1 | Native tray menu: every item, language follows the UI, Start/Stop enable/disable, Exit | PARTLY 2026-10-02 (user, English, while recording a Complete session): status / power / session-and-cost lines correct, Start disabled, Stop enabled, Exit clean. Not checked: Open, Settings, Start/Stop clicks, the stopped state, German/Persian |
 | E2 | Second launch forwards to the first window | PASSED by script (2026-10-02); confirm visually once |
 | E3 | The window at 880x600, 1120x740, 1600x1000 and maximized; English, German and Persian; in the real WebView2 | PASSED 2026-10-02: 84 page x language x size combinations, no overflow, truncation, raw key or contrast failure |
 | E4 | Keyboard-only pass through every page (Tab order, focus ring, dialogs) | PASSED 2026-10-02 with one known issue (focus is dropped when a button disables itself; see Known issues) |
@@ -117,6 +117,18 @@ implementation. Items added by that audit are marked *(added)*.
 | G2 | Final MSI/NSIS built from that commit; SHA-256 recorded | UNVERIFIED |
 | G3 | One product version everywhere (the sidecar currently stamps sessions with its assembly version `1.0.0.0`; the app is `0.1.0`) | UNVERIFIED -- known inconsistency, see Known issues |
 | G4 | README / release notes / known limitations updated | UNVERIFIED |
+
+## Required before the release candidate (decided 2026-10-02)
+
+| # | Item | Status |
+|---|---|---|
+| R1 | The 4-hour soak (`soak.ps1 -Minutes 240`), deferred until the machine can be left unused for four hours | UNVERIFIED |
+| R2 | One final **unattended** lifecycle run (`validate-lifecycle.ps1`, nobody using the desktop) | UNVERIFIED |
+| R3 | Focus loss when a busy button disables itself: preferably fixed, first investigating a shared UI primitive instead of patching every button; no broad risky change | OPEN |
+| R4 | Sidecar session version `1.0.0.0` vs app version `0.1.0`: resolve or explicitly disposition | OPEN |
+| R5 | Gaming withheld cost shows `n/a` where the rest of WattScope shows `--`: resolve or explicitly disposition | OPEN |
+| R6 | First-run / Retry foreground-input risk: act only if evidence supports a concrete fix | OPEN |
+| R7 | The fresh session after a give-up stays an **open observation**; the stray-input mechanism is **not** classified as proven | OPEN |
 
 ## Release blockers found so far
 

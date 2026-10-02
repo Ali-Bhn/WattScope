@@ -145,6 +145,38 @@ other than the two it starts, so such contamination fails the run visibly:
 **25/25 on three consecutive runs of the final build.** Recommendation: run
 it on a desktop that is not otherwise in use.
 
+## Phase 6 -- Administrator Complete monitoring (manual, run by the user) -- PASSED
+
+2026-10-02, the packaged `desktop/src-tauri/target/release/wattscope.exe`
+launched by the user from Explorer with *Run as administrator* (UAC prompt
+shown and confirmed by the user; nothing was elevated automatically), against
+the **normal** database -- the intended production behaviour. Nothing
+destructive was done to it; it gained session #20 and the first-run flag.
+Evidence: the user's two screenshots and tray report, a read-only process
+check while it ran, and the database / CLI afterwards.
+
+| Requirement | Observed |
+|---|---|
+| UAC user initiated | yes (user's launch and confirmation) |
+| Exactly one host, one owned sidecar | 1 `wattscope.exe`, 1 `wattscope-probe.exe` whose parent is that host; session row `process_elevated = 1` |
+| CPU package available (i9-14900KF) | 44.4 W MEASURED on the dashboard; LibreHardwareMonitor "CPU Package"; 714 raw samples, none null, none non-OK, minimum 22.3 W -- no missing CPU reading and none treated as zero |
+| GPU board available through NVML | 43.2 W MEASURED; Nvml "GPU Board Power"; all samples OK |
+| Monitoring state Complete | "Complete monitoring" + COMPLETE badge; Sensors card Complete |
+| System power labelled estimated | "Estimated system power 152.9 W", badge ESTIMATED, no `>=`; equals (44.4 + 43.2 + 50) / 0.9 |
+| Session energy Complete | Reports: Complete energy 0.033 kWh, Partial `--`, Complete (at 00:07:10); CPU 0.008 kWh and GPU 0.016 kWh both covering the whole time |
+| Cost when a price covers the interval | dashboard EUR 0.0049 at 14.0 Wh (= 14.0 Wh x 0.35 EUR/kWh, labelled approximate); Reports EUR 0.01 |
+| Tray menu (first time verified by eye) | "Monitoring: complete", "Estimated power: 157.6 W", "Session: 0.045 kWh, 0.0157 EUR" (= 0.045 x 0.35), Start disabled, Stop enabled |
+| Clean tray -> Exit | icon and window gone at once; afterwards 0 host, 0 sidecar, 0 WebView2 processes; no `-wal`/`-shm` left |
+| Session persisted and ended cleanly | #20 `Stopped` ("Stopped (--serve exiting)"), 16:00:49 -> 16:12:43, 0 gaps, 0 Active sessions, 20 sessions, integrity ok |
+| CLI summary agrees with the UI | monitored 00:11:52; CPU 12.293 Wh and GPU 22.950 Wh at 100 % coverage; "ESTIMATED wall energy (not measured)" 50.162 Wh, Complete; cost 0.02 EUR (unrounded 0.01755666 = 50.162 Wh x 0.35 EUR/kWh); same assumptions (50 W, 90 %) |
+
+Notes: the session-energy card carries the badge ESTIMATED (completeness is
+stated on the status and Sensors cards). A tray Exit records the end reason
+"Stopped (--serve exiting)"; M004's session #18 says "Stopped by user" --
+wording only, both are clean stops. **Not covered here:** a second
+(unelevated) launch while the elevated instance runs (checklist B4), and a
+Complete *gaming* session (B2).
+
 ## Phase 3 -- long-session stability (soak)
 
 `desktop/scripts/soak.ps1` (new, reproducible): packaged app, scratch
