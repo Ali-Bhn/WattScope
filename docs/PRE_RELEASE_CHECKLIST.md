@@ -37,15 +37,15 @@ implementation. Items added by that audit are marked *(added)*.
 
 | # | Item | How | Status |
 |---|---|---|---|
-| A1 | Call of Duty / Warzone detected, named, one session, ended with the game; real executable name and detection latency recorded | `MANUAL_VALIDATION.md` section 7 | UNVERIFIED |
-| A2 | A launcher (Battle.net/Steam) alone is never a game | same | UNVERIFIED |
+| A1 | Call of Duty / Warzone detected, named, one session, ended with the game; real executable name and detection latency recorded | `MANUAL_VALIDATION.md` section 7 | PASSED 2026-10-02 unelevated (user-run; `PROJECT_STATE.md` Phase 7): `cod.exe`, catalog match, session dated within 5 s of the process start, `Ended: ProcessExited`. Relaunch inside the grace period not tried |
+| A2 | A launcher (Battle.net/Steam) alone is never a game | same | PASSED 2026-10-02 for the real Battle.net (6 minutes alone, and again after the game closed). Steam not tried |
 | A3 | A second, unrelated real game is detected (catalog / library-folder heuristics) | play it | UNVERIFIED |
 | A4 | A game that is not detected can be started and stopped manually | Gaming page | PARTLY: the manual start/stop path was exercised in the production UI with a stand-in name (2026-10-02, scratch copy); not with a real undetected game |
 | A5 | FPS / frame-time impact of WattScope running (the project makes **no** FPS claim until measured) | controlled A/B benchmark with a game | UNVERIFIED |
-| A6 | Anti-cheat tolerance: WattScope is external and passive, but **no compatibility is claimed** until the game is run with it open | play with WattScope running | UNVERIFIED |
-| A7 | *(added)* Gaming while WattScope is hidden in the tray: session still detected, recorded and ended | play with the window closed | UNVERIFIED |
-| A8 | *(added)* Exactly one gaming session and no second monitoring session for one play session (CLI `--gaming`, `--sessions` afterwards) | after A1 | UNVERIFIED |
-| A9 | *(added)* If automatic detection fails: the reason is recorded first, then the manual mapping fallback is tested separately | after A1 | UNVERIFIED |
+| A6 | Anti-cheat tolerance: WattScope is external and passive, but **no compatibility is claimed** until the game is run with it open | play with WattScope running | PARTLY 2026-10-02: one 35-minute unelevated Warzone session with WattScope running, no objection reported by the user. Not tried elevated (the CPU sensor driver is only loaded then). Still **no compatibility claim** |
+| A7 | *(added)* Gaming while WattScope is hidden in the tray: session still detected, recorded and ended | play with the window closed | PASSED 2026-10-02: recorded and ended while in the tray (detection itself happened with the window open) |
+| A8 | *(added)* Exactly one gaming session and no second monitoring session for one play session (CLI `--gaming`, `--sessions` afterwards) | after A1 | PASSED 2026-10-02: gaming #1 only, monitoring #21 only, 0 gaps |
+| A9 | *(added)* If automatic detection fails: the reason is recorded first, then the manual mapping fallback is tested separately | after A1 | UNVERIFIED -- detection did not fail, so the fallback was not exercised with a real game |
 | A10 | *(added)* Windows sleep during a game (covered by tests with the real `EnergyMonitor` only) | optional | UNVERIFIED |
 
 ## B. Privilege
@@ -88,7 +88,7 @@ implementation. Items added by that audit are marked *(added)*.
 
 | # | Item | Status |
 |---|---|---|
-| E1 | Native tray menu: every item, language follows the UI, Start/Stop enable/disable, Exit | PARTLY 2026-10-02 (user, English, while recording a Complete session): status / power / session-and-cost lines correct, Start disabled, Stop enabled, Exit clean. Not checked: Open, Settings, Start/Stop clicks, the stopped state, German/Persian |
+| E1 | Native tray menu: every item, language follows the UI, Start/Stop enable/disable, Exit | PARTLY 2026-10-02 (user, English, while recording a Complete session): status / power / session-and-cost lines correct, Start disabled, Stop enabled, Exit clean. Also seen in the Partial state during Phase 7 (lines correct apart from Known issue 7; Open and Exit used). Not checked: Settings, Start/Stop clicks, the stopped state, German/Persian |
 | E2 | Second launch forwards to the first window | PASSED by script (2026-10-02); confirm visually once |
 | E3 | The window at 880x600, 1120x740, 1600x1000 and maximized; English, German and Persian; in the real WebView2 | PASSED 2026-10-02: 84 page x language x size combinations, no overflow, truncation, raw key or contrast failure |
 | E4 | Keyboard-only pass through every page (Tab order, focus ring, dialogs) | PASSED 2026-10-02 with one known issue (focus is dropped when a button disables itself; see Known issues) |
@@ -162,3 +162,7 @@ implementation. Items added by that audit are marked *(added)*.
    first-run dialog's primary button focused, so a keystroke meant for another
    application can confirm that dialog. Ordinary launch behaviour; harmless
    (the dialog only records that it was seen).
+7. **Tray power line has no lower-bound mark**: while monitoring is Partial
+   the tray shows "Estimated power: 118.5 W" without `>=`. The status line
+   above it says "partial" and the session line has `>=`; wording only
+   (found in Phase 7).

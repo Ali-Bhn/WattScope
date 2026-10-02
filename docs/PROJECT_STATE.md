@@ -7,9 +7,10 @@ top of Milestone 006.
 
 - **Pre-release validation**: Phases 1-5 done (automated gate, flaky test,
   soak, real-database rehearsal on copies, production UI/accessibility) --
-  see "Pre-release validation" below. **No release blocker found.** Phases
-  6-12 (Administrator, real Warzone, FPS, installers, shutdown/restart/logoff,
-  release candidate) not started.
+  see "Pre-release validation" below. Phase 6 (Administrator Complete
+  monitoring) and Phase 7 (real Warzone, unelevated) were run by the user and
+  PASSED. **No release blocker found.** Phases 8-12 (FPS, installers,
+  shutdown/restart/logoff, release candidate) not started.
 
 - **Milestone 006** -- Application Completion, UX Polish & Feature-Complete
   Candidate: **implemented; the application is FEATURE COMPLETE** (see the
@@ -40,18 +41,20 @@ top of Milestone 006.
 
 - **Milestone 005** -- Gaming Session Detection & Energy Analytics:
   **implemented and validated** with synthetic processes (automated) and with
-  harmless stand-in processes on the real packaged app. **No real game has been
-  run: the Call of Duty / Warzone validation is UNVERIFIED** until the user
-  performs `docs/MANUAL_VALIDATION.md` section 7.
+  harmless stand-in processes on the real packaged app. **Call of Duty /
+  Warzone through the real Battle.net was validated unelevated on 2026-10-02**
+  (Phase 7 below: detected automatically, one Partial session). An elevated
+  (Complete) gaming session, a second real game and FPS impact stay UNVERIFIED.
 
 # Pre-release validation (feature freeze)
 
 Baseline `b8100aa`. No product feature was added in this phase; changes are
 limited to verified fixes, test infrastructure and documentation. Phases 1-5
 (automated gate, flaky test, soak, real-database rehearsal, production UI and
-accessibility) were run on 2026-10-02. **Phases 6-12 (Administrator, real
-Warzone, FPS, installers, shutdown/restart/logoff, release candidate) have not
-been started** and stay UNVERIFIED in `docs/PRE_RELEASE_CHECKLIST.md`.
+accessibility) were run on 2026-10-02, followed the same day by the user-run
+Phase 6 (Administrator) and Phase 7 (real Warzone). **Phases 8-12 (FPS,
+installers, shutdown/restart/logoff, release candidate) have not been
+started** and stay UNVERIFIED in `docs/PRE_RELEASE_CHECKLIST.md`.
 
 **Release blockers found: none.** Two defects were fixed (a test-script race
 and high-contrast marking); the known non-blocking issues are listed in the
@@ -176,6 +179,57 @@ stated on the status and Sensors cards). A tray Exit records the end reason
 wording only, both are clean stops. **Not covered here:** a second
 (unelevated) launch while the elevated instance runs (checklist B4), and a
 Complete *gaming* session (B2).
+
+## Phase 7 -- real Warzone, unelevated (manual, run by the user) -- PASSED
+
+2026-10-02, the same packaged `wattscope.exe`, launched by the user from
+Explorer **without** elevation, against the normal database. The user started
+Battle.net and Call of Duty by hand; WattScope launched nothing and no
+production code was changed. Evidence: the user's reports and screenshots, the
+database through the read-only CLI (`--gaming`, `--sessions`, `--summary`,
+`--db-info`; before and after on scratch copies), and a validation-only
+process logger that read what the detector reads (a Toolhelp snapshot every
+2 s plus the image path once per new process through
+`PROCESS_QUERY_LIMITED_INFORMATION`; no command lines, memory, modules or
+windows).
+
+| Requirement | Observed |
+|---|---|
+| One host, one owned sidecar, unelevated | `wattscope.exe` started by `explorer.exe`, one `wattscope-probe.exe` child; monitoring session #21 Partial (CPU unavailable, GPU measured) |
+| Battle.net alone is not a game | `Battle.net.exe` (`C:\Program Files (x86)\Battle.net\`) with six child processes and `Agent.exe` open alone 16:47:40 -> 16:53:50 (6 min); no gaming session, no candidate reported. Spotify, Photos, Snipping Tool and Edge started meanwhile and were not detected |
+| **Real executable identity** | **`cod.exe`**, `E:\GAMES\Battlenet\Call of Duty\_retail_\cod.exe`; parent chain `Battle.net.exe` -> `bootstrapper.exe` (same folder) -> `cod.exe` |
+| Helpers do not become games | `bootstrapper.exe`, `bootstrapperCrashHandler.exe`, `codCrashHandler.exe`, `CODBrokerService.exe` (a Windows service; path not readable unelevated), `dxdiag.exe`, about 20 short-lived `nvngx_update.exe` children of `cod.exe`: no session from any of them |
+| Automatic detection, no mapping | detection source `KnownCatalog` ("Call of Duty"); `game_mapping` empty before and after |
+| Detection latency | process first logged 16:53:52 (2 s resolution); session dated from first sight, 16:53:57 -- within the 5 s poll interval. The LIVE card was seen by the user; the moment of confirmation (20 s delay) was not timed |
+| Exactly one gaming session | #1 only, while live, in the tray and after the end; monitoring stayed the single session #21 with 0 gaps |
+| Partial semantics | energy `>= 0.0943 kWh` (lower bound), system `>= 163.2 W`, CPU average and peak missing (`--` / `n/a`, never 0), cost withheld (`WithheldPartial`; UI "Not shown: the estimate is partial"), lower-bound cost `>= EUR 0.03` labelled separately |
+| GPU load visible | average 58.5 W at the menu, 110.3 W after 26 min including play, peak 193.1 W (RTX 5070 Ti, NVML) |
+| Tray / background | window closed to the tray for the play period: same host and sidecar PIDs, sampling uninterrupted; tray menu "Monitoring: partial (CPU power unavailable)", "Session: >= 0.167 kWh, cost n/a", Start disabled, Stop enabled |
+| Game close | `cod.exe` gone 17:28:31-33 (logger); session end stored as 17:28:36 (first missed poll); still Active at 17:29:05, `Ended: ProcessExited` by 17:29:17 -- the 30 s grace period is not counted as play time. Battle.net stayed open and created nothing |
+| Stored session | 16:53:57 -> 17:28:36, duration 00:34:39 = monitored 00:34:39, not monitored 0, 0 gaps; the Gaming history row, detail panel and per-game table show the same values as the CLI |
+| Arithmetic | (96.9 W GPU + 50 W) / 0.9 = 163.2 W; 163.2 W x 2079 s = 0.0943 kWh. Session #21: (120.598 Wh GPU + 50 W x 01:06:16) / 0.9 = 195.356 Wh, as stored |
+| Clean tray -> Exit | Exit clicked 17:33:00; #21 `Stopped` ("Stopped (--serve exiting)") at 17:33:02; host, sidecar and all six WebView2 processes gone by 17:33:04; no `-wal`/`-shm` left |
+| Database afterwards | 21 sessions, 0 Active, 1 gaming session, 0 mappings, schema 4, integrity ok |
+
+Findings (none blocking, no code changed):
+
+- While a gaming session is **running**, the CLI showed duration 8 s longer
+  than monitored (30 s during the grace period). The stored session has no
+  difference, so no monitored time was lost; the running-session path was not
+  traced further.
+- The tray line "Estimated power: 118.5 W" carries no `>=` while monitoring is
+  Partial; the status line above it says "partial" and the session line has
+  `>=`. Wording only (checklist Known issues 7).
+- The user gave the quit time as 17:28:40; the process was already gone at
+  17:28:33 by the system clock. Taken as a reading difference of a few seconds.
+
+**Not covered here:** an elevated (Complete) gaming session (B2); relaunching
+the game inside the grace period; the heuristic layers (launcher child /
+library folder) on a real game -- `cod.exe` was matched by the catalog; a
+second real game (A3); sleep during a game (A10); FPS impact (A5, Phase 8).
+The game ran for 35 minutes with WattScope open and the user reported no
+objection from the game; that is one unelevated observation, **not** an
+anti-cheat compatibility claim.
 
 ## Phase 3 -- long-session stability (soak)
 
@@ -571,13 +625,10 @@ re-checked afterwards (19 sessions, schema 4, integrity ok).
 
 ## UNVERIFIED (needs a person / a real game)
 
-- **Call of Duty / Warzone through Battle.net**: not launched, not validated.
-  Procedure: `docs/MANUAL_VALIDATION.md` section 7. In particular unverified:
-  the game's real executable name vs the catalog (`cod.exe` etc. are best
-  guesses), detection latency with the real process tree, and anything about
-  anti-cheat interaction (no compatibility claim is made).
-- The **real** Battle.net launcher was not exercised (a stand-in named
-  `Battle.net.exe` was); it happened not to be running during validation.
+- **Call of Duty / Warzone through Battle.net**: since validated unelevated
+  on 2026-10-02 ("Phase 7" above: the executable is `cod.exe`, matched by the
+  catalog; the real Battle.net alone is not a game). Still no anti-cheat
+  compatibility claim.
 - **Complete** (elevated) gaming sessions with a cost: covered by unit tests
   only; the real runs were unelevated (Partial).
 - Heuristic detection (launcher child / library folder) on real software:
