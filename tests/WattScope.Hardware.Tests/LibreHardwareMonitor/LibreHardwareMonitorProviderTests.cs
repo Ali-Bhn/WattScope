@@ -3,6 +3,7 @@ using WattScope.Hardware.LibreHardwareMonitor;
 namespace WattScope.Hardware.Tests.LibreHardwareMonitor;
 
 /// <summary>Integration tests against the real LibreHardwareMonitorLib backend on this Windows machine.</summary>
+[Collection("LibreHardwareMonitor real backend")] // real backends opened concurrently interfere; see ScopedSamplingRealBackendTests
 public class LibreHardwareMonitorProviderTests
 {
     [Fact]

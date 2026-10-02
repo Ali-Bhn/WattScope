@@ -231,6 +231,59 @@ The game ran for 35 minutes with WattScope open and the user reported no
 objection from the game; that is one unelevated observation, **not** an
 anti-cheat compatibility claim.
 
+## Performance audit -- scoped sensor sampling (S1)
+
+Phase 8 (the manual FPS benchmark) was cancelled by the user; checklist A5
+stays UNVERIFIED. A read-only audit instead found one measured inefficiency:
+every tick refreshed all LibreHardwareMonitor hardware and returned 158
+readings, of which monitoring uses one (CPU Package); the LibreHardwareMonitor
+NVIDIA GPU node alone took ~63 ms per tick although GPU board power comes
+from NVML. **Change:** after discovery, `--serve` and `--record` call
+`PowerSampleBuilder.LimitSamplingToBindings`, and a provider implementing
+`IScopedSensorProvider` (LibreHardwareMonitor) then refreshes only the nodes
+that own a bound sensor (and their parents) and returns only those sensors.
+Derived from the bindings alone -- no vendor is special-cased, a GPU bound to
+LibreHardwareMonitor keeps being read. Discovery, `--discover` and `--monitor`
+are unfiltered. Interval, timestamps, gap detection, arithmetic, completeness
+and persistence are untouched.
+
+Measured on this machine, unelevated, sidecar alone (`--serve`) on scratch
+databases, published single-file binaries of `b51af36` and of this change:
+
+| | Before | After |
+|---|---|---|
+| LibreHardwareMonitor readings per tick | 158 | 1 |
+| Provider call (harness, mean of 60): wall / CPU / allocated | 79.2 ms / 12.0 ms / 101 KiB | 12.2 ms / 0.5 ms / 3.7 KiB |
+| Sidecar `readAvgMs` / `readMaxMs` (120 s, GPU idle) | 78.3 / 160.7 | 5.5 / 55.7 |
+| Sidecar CPU, % of one core: GPU idle (120 s) | 1.44 | 0.39 |
+| Sidecar CPU, % of one core: GPU under load (2 x 180 s each) | 2.31, 2.48 | 0.64, 0.63 |
+| Sidecar private memory | 49-52 MiB | 39-41 MiB |
+| Ticks / gaps (each run) | 1.000 Hz / 0 | 1.000 Hz / 0 |
+
+GPU (NVML) valid in every tick and equal to `nvidia-smi` read at the same
+moment; CPU `ImplausibleZero` in every tick, as before (unelevated);
+`--discover` inventory identical (159 sensors, same IDs, names, order and
+selections). The GPU load during the 180 s runs was whatever the machine was
+doing, not a controlled workload. No FPS claim follows from these numbers.
+
+**Elevated smoke test (user-run, 2026-10-02, rebuilt release exe, normal
+database, no game):** `wattscope.exe` launched with *Run as administrator*,
+about 5.5 minutes of monitoring, then tray Exit without pressing Stop. Session
+#22 (`process_elevated = 1`): 334 raw samples over 333.0 s = 1.0000 Hz (interval
+983-1016 ms, none above 1.5 s, no duplicates), 0 gaps, CPU Package (LibreHardwareMonitor,
+`/intelcpu/0/power/0`) valid in all 334 samples (26.6-204.3 W, 334 distinct
+values: not stale) and GPU Board Power (NVML) valid in all 334 (39.2-53.6 W);
+no partial energy. Stored complete wall estimate 51,630 J equals an independent
+recomputation from the raw samples, (CPU + GPU + 50 W x t) / 0.9, to 0.02 J;
+CLI cost 0.0050196 EUR = 14.342 Wh x 0.35 EUR/kWh. Ended `Stopped (--serve
+exiting)`, 0 active sessions, integrity ok, no `-wal`/`-shm`, no WattScope
+process left. Sessions 1-21 and every other table are byte-for-byte unchanged
+apart from the rows of session #22. **Not observed in that run:** the
+sidecar's own `readAvgMs`/`readMaxMs` and the per-tick refresh counts (the
+process logger was not running during it); that the GPU node is not refreshed
+is shown by the unit tests, the unelevated timing runs above and the code, not
+by this run. The packaged installers contain the change.
+
 ## Phase 3 -- long-session stability (soak)
 
 `desktop/scripts/soak.ps1` (new, reproducible): packaged app, scratch

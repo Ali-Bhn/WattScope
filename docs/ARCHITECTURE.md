@@ -369,6 +369,13 @@ window: ONE store (lib/store.ts) = the only listener of those events
   created once in `Initialize()` and reused. CPU, GPU, Memory, and
   Motherboard hardware groups are enabled; Storage/Network/Controller/PSU/
   Battery are left disabled to keep the always-on sampling path lightweight.
+  Discovery and `--monitor` refresh every node and return every sensor. For
+  continuous monitoring (`--serve`, `--record`) the bound sensor IDs are handed
+  over once (`PowerSampleBuilder.LimitSamplingToBindings` ->
+  `IScopedSensorProvider.LimitSamplingTo`); a tick then refreshes only the
+  nodes that own a bound sensor, plus their parents, and returns only those
+  sensors. A bound sensor that is not there is absent (the channel reads
+  Missing), never substituted.
 - **NvmlSensorProvider** P/Invokes `nvml.dll` directly (found under
   `C:\Windows\System32` when an NVIDIA driver is installed) via
   `DllImport("nvml.dll")`. It is never bundled by this application. If the

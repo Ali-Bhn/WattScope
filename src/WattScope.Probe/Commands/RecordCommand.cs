@@ -48,6 +48,8 @@ public static class RecordCommand
 
         var builder = new PowerSampleBuilder(snapshot.PowerClassification);
         PrintChannelSetup(builder, snapshot);
+        // Discovery read the whole inventory; from here on only the bound sensors are refreshed each tick.
+        builder.LimitSamplingToBindings(providers);
 
         var interval = TimeSpan.FromMilliseconds(options.IntervalMilliseconds);
         var monitor = new EnergyMonitor(store,

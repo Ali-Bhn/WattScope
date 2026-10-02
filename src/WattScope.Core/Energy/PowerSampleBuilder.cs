@@ -51,6 +51,18 @@ public sealed class PowerSampleBuilder
     public ReadingState? FixedState(EnergyChannel channel) =>
         channel == EnergyChannel.CpuPackage ? _cpu.FixedState : _gpu.FixedState;
 
+    /// <summary>
+    /// Tells every provider that supports it to sample only the sensors bound
+    /// here (per provider, by sensor ID). Purely derived from the bindings: a
+    /// provider none of whose sensors was selected for a channel is asked for
+    /// nothing, one whose sensor was selected keeps reading it.
+    /// </summary>
+    public void LimitSamplingToBindings(IEnumerable<ISensorProvider> providers)
+    {
+        foreach (var provider in providers.OfType<IScopedSensorProvider>())
+            provider.LimitSamplingTo(Bindings.Where(b => b.ProviderId == provider.ProviderId).Select(b => b.SensorId).ToHashSet());
+    }
+
     public PowerSample Build(SamplingTick tick) => Build(tick.Readings, tick.Timestamp, tick.MonotonicTime);
 
     public PowerSample Build(IReadOnlyList<SensorReading> readings, DateTimeOffset utcTime, TimeSpan monotonicTime) => new()

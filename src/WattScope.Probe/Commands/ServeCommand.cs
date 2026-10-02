@@ -103,6 +103,8 @@ public static class ServeCommand
         recordStore.PruneRawSamples(DateTimeOffset.UtcNow);
 
         var builder = new PowerSampleBuilder(snapshot.PowerClassification);
+        // Discovery read the whole inventory; from here on only the bound sensors are refreshed each tick.
+        builder.LimitSamplingToBindings(providers);
         var source = new ProviderSampleSource(providers, builder, loggerFactory);
         // Game detection can be switched off with WATTSCOPE_GAME_DETECTION=off (no process polling at all);
         // monitoring is unaffected. Used for overhead A/B measurements and by anyone who does not want it.
