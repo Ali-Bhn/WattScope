@@ -38,6 +38,45 @@ polish, feature-complete candidate) on top of Milestone 005.
   run: the Call of Duty / Warzone validation is UNVERIFIED** until the user
   performs `docs/MANUAL_VALIDATION.md` section 7.
 
+# Pre-release validation (feature freeze)
+
+Baseline `b8100aa`. No product feature was added in this phase; changes are
+limited to verified fixes, test infrastructure and documentation.
+
+## Phase 2 -- the timing-sensitive sampling test
+
+`SamplingEngineTests.AfterAStall_DoesNotBurstCatchUpTicks` (20 ms interval, a
+200 ms stall, "every tick spacing >= 10 ms") failed intermittently under load.
+
+- **Reproduced**, not re-run until green: 2 of 12 runs failed while a release
+  build was loading the CPU, each with a *single* short spacing (7.2 ms, 4.0 ms).
+- **Cause: the test, not the engine.** The engine keeps a fixed schedule (no
+  drift) and re-anchors only when a tick is late by *more than one interval*.
+  A tick late by less than that -- ordinary `Task.Delay` jitter on Windows'
+  ~15.6 ms timer, which is most of a 20 ms interval -- is legitimately followed
+  by one tick that comes sooner, to get back on schedule. That is one short
+  spacing, never a burst, and the wall-clock assertion could not tell the two
+  apart. At the production interval (1 s) the same jitter is ~1.5 % of an
+  interval.
+- **No production scheduling defect.** Energy integration uses the measured
+  time between samples, so a single closer sample cannot create energy.
+- **Fix (test architecture; production semantics unchanged):** `SamplingEngine`
+  takes an optional `TimeProvider` (default `TimeProvider.System`, i.e. the
+  same `Stopwatch` counter and `Task.Delay` timers as before; the convention
+  `EnergyMonitor` and `GamingSessionTracker` already use). The tests run on a
+  virtual clock (`VirtualClock`) and assert **exact** tick times.
+- **The assertion was strengthened, not weakened:** after a stall every spacing
+  must be a full interval (was: half), the tick times are checked exactly
+  (`0, 20, 220, 240, ... 380`), exactly one gap of exactly 180 ms is reported,
+  for stalls of 41 ms, 1 s and 60 s; plus new coverage for "late by less than
+  one interval keeps the schedule" and "no drift when every read takes 7 ms".
+- **The test detects the defect it guards against:** with the re-anchoring line
+  removed from the engine (mutation check, then restored) the tests fail
+  deterministically with zero-spacing catch-up ticks.
+- Result: Core 209 -> **214** tests; 15 consecutive runs of the sampling tests,
+  0 failures. The other `SamplingEngineTests` still use the real clock with
+  tolerant assertions and were not seen to fail.
+
 # Milestone 006
 
 Scope: finish the *application*, not validate a release. No schema change
@@ -218,11 +257,10 @@ was 347. Frontend 183 (was 43). Rust 15 (was 12).
 - Dates for English use the US order (`10/02/2026`); there is no ISO option.
 - Estimation settings changes apply to the *next* monitoring session by design
   (the running session keeps the values it was recorded with); the UI says so.
-- The pre-existing `SamplingEngineTests.AfterAStall_DoesNotBurstCatchUpTicks`
-  (Core, untouched) asserts a 10 ms tick spacing against a 20 ms interval and
-  failed under CPU load (3 of 4 runs while a browser and dev server were
-  running) and passed 4/4 when the machine was idle. A timing-sensitive test,
-  not a product defect; left as is.
+- ~~`SamplingEngineTests.AfterAStall_DoesNotBurstCatchUpTicks` is
+  timing-sensitive.~~ **Resolved in pre-release validation** (see "Pre-release
+  validation, Phase 2" at the top of this file): the test now runs on a
+  virtual clock and is deterministic; no production scheduling defect.
 
 # Milestone 005
 
@@ -602,7 +640,8 @@ exactly the kind of bug code review alone would not have caught.
 6. The pre-existing `SamplingEngineTests.AfterAStall_DoesNotBurstCatchUpTicks`
    test is timing-sensitive and occasionally flakes under system load when
    the full suite runs in parallel (passes reliably in isolation); this is
-   unrelated to Milestone 003 and was not introduced by it.
+   unrelated to Milestone 003 and was not introduced by it. *(Made
+   deterministic in pre-release validation, Phase 2.)*
 
 # Milestone 002
 

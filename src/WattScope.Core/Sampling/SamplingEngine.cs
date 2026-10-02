@@ -16,27 +16,34 @@ public sealed class SamplingEngine
 {
     private readonly IReadOnlyList<ISensorProvider> _providers;
     private readonly ILogger<SamplingEngine>? _logger;
+    private readonly TimeProvider _time;
 
-    public SamplingEngine(IReadOnlyList<ISensorProvider> providers, ILogger<SamplingEngine>? logger = null)
+    /// <param name="timeProvider">
+    /// Clock and timer source; defaults to the system one (the same
+    /// <see cref="Stopwatch"/> counter and <see cref="Task.Delay(TimeSpan, CancellationToken)"/>
+    /// timers as before). Tests pass a virtual clock so scheduling is deterministic.
+    /// </param>
+    public SamplingEngine(IReadOnlyList<ISensorProvider> providers, ILogger<SamplingEngine>? logger = null, TimeProvider? timeProvider = null)
     {
         _providers = providers;
         _logger = logger;
+        _time = timeProvider ?? TimeProvider.System;
     }
 
     public async IAsyncEnumerable<SamplingTick> RunAsync(
         SamplingOptions options,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var stopwatch = Stopwatch.StartNew();
+        var runStart = _time.GetTimestamp();
         var sequence = 0;
         var nextDue = TimeSpan.Zero;
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            if (options.Duration is { } duration && stopwatch.Elapsed >= duration)
+            if (options.Duration is { } duration && _time.GetElapsedTime(runStart) >= duration)
                 yield break;
 
-            var tickStart = stopwatch.Elapsed;
+            var tickStart = _time.GetElapsedTime(runStart);
             var gapDetected = false;
             TimeSpan? gapDuration = null;
             var lateness = TimeSpan.Zero;
@@ -55,8 +62,8 @@ public sealed class SamplingEngine
 
             var readings = new List<SensorReading>();
             var errors = new List<DiagnosticMessage>();
-            var timestamp = DateTimeOffset.UtcNow;
-            var monotonicTimestamp = Stopwatch.GetTimestamp();
+            var timestamp = _time.GetUtcNow();
+            var monotonicTimestamp = _time.GetTimestamp();
 
             foreach (var provider in _providers)
             {
@@ -81,8 +88,8 @@ public sealed class SamplingEngine
             {
                 Sequence = sequence,
                 Timestamp = timestamp,
-                MonotonicTime = Stopwatch.GetElapsedTime(0, monotonicTimestamp),
-                ReadDuration = Stopwatch.GetElapsedTime(monotonicTimestamp),
+                MonotonicTime = _time.GetElapsedTime(0, monotonicTimestamp),
+                ReadDuration = _time.GetElapsedTime(monotonicTimestamp),
                 Readings = readings,
                 Errors = errors,
                 GapDetected = gapDetected,
@@ -93,15 +100,17 @@ public sealed class SamplingEngine
             // Stay on the fixed schedule (no drift), except when this tick was
             // already late by more than a whole interval (stall, sleep/resume):
             // then re-anchor on this tick instead of firing a burst of
-            // back-to-back catch-up ticks for every missed slot.
+            // back-to-back catch-up ticks for every missed slot. A tick late by
+            // at most one interval keeps the schedule, so the tick after it can
+            // follow sooner than one interval -- once, never as a burst.
             nextDue = lateness > options.Interval ? tickStart + options.Interval : nextDue + options.Interval;
-            var remaining = nextDue - stopwatch.Elapsed;
+            var remaining = nextDue - _time.GetElapsedTime(runStart);
 
             if (remaining > TimeSpan.Zero)
             {
                 try
                 {
-                    await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
+                    await Task.Delay(remaining, _time, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
