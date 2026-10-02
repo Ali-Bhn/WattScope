@@ -76,6 +76,17 @@ public sealed record ServeRequest
     public WattScope.Core.Gaming.GameMappingKind? MappingKind { get; init; }
     public string? DisplayName { get; init; }
 
+    // Application / data management (Milestone 006)
+
+    /// <summary>set_price: the user has seen what a price that reaches into already-recorded energy changes, and accepts it.</summary>
+    public bool? ConfirmHistorical { get; init; }
+
+    /// <summary>preview_history_deletion / delete_history: finished sessions that ended more than this many days ago.</summary>
+    public int? OlderThanDays { get; init; }
+
+    /// <summary>delete_history: the number of sessions the user was shown; a mismatch refuses the deletion.</summary>
+    public int? ConfirmSessions { get; init; }
+
     /// <summary>start_manual_gaming: also remember the executable as a game so it is detected automatically next time.</summary>
     public bool? RememberAsGame { get; init; }
 }

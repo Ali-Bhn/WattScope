@@ -65,8 +65,32 @@ struct TrayModel {
     state: TrayState,
     watts: Option<f64>,
     kwh: f64,
+    /// Partial (lower-bound) energy, shown only as "at least" and never added into a complete total.
+    partial_kwh: f64,
     cost: Option<f64>,
     currency: String,
+}
+
+/// What the UI is told about the sidecar process itself, separate from whether
+/// monitoring is recording: starting, running, restarting (a bounded automatic
+/// restart is pending) or failed (the host gave up; only a user Retry continues).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct BackendInfo {
+    state: &'static str,
+    /// Stable code for a `failed` state (see `GiveUpReason::code`), localized by the UI.
+    reason: Option<&'static str>,
+    /// Technical detail for diagnostics; never the primary user-facing text.
+    message: Option<String>,
+}
+
+impl BackendInfo {
+    fn starting() -> Self {
+        Self { state: "starting", reason: None, message: None }
+    }
+
+    fn to_json(&self) -> Value {
+        json!({ "state": self.state, "reason": self.reason, "message": self.message })
+    }
 }
 
 struct TrayUi {
@@ -99,6 +123,7 @@ struct SidecarState {
     tray_ui: Mutex<Option<TrayUi>>,
     last_tray_refresh: Mutex<Instant>,
     lang: Mutex<String>,
+    backend: Mutex<BackendInfo>,
 }
 
 impl SidecarState {
@@ -117,7 +142,31 @@ impl SidecarState {
             tray_ui: Mutex::new(None),
             last_tray_refresh: Mutex::new(Instant::now()),
             lang: Mutex::new("en".to_string()),
+            backend: Mutex::new(BackendInfo::starting()),
         }
+    }
+}
+
+/// Records the sidecar process state and tells the window when it changed.
+fn set_backend(app: &AppHandle, state: &'static str, reason: Option<&'static str>, message: Option<String>) {
+    let next = BackendInfo { state, reason, message };
+    let sidecar = app.state::<SidecarState>();
+    let changed = {
+        let mut current = sidecar.backend.lock().unwrap();
+        let changed = current.state != next.state || current.reason != next.reason;
+        *current = next.clone();
+        changed
+    };
+    if changed {
+        let _ = app.emit("backend-state", next.to_json());
+    }
+}
+
+/// The first line from a freshly spawned sidecar proves it is up.
+fn mark_backend_running(app: &AppHandle) {
+    let starting = app.state::<SidecarState>().backend.lock().map(|b| b.state == "starting").unwrap_or(false);
+    if starting {
+        set_backend(app, "running", None, None);
     }
 }
 
@@ -169,7 +218,10 @@ fn refresh_tray(app: &AppHandle) {
         Some(c) if live => format!("{:.4} {}", c, if model.currency.is_empty() { "EUR" } else { &model.currency }),
         _ => l.cost_unavailable.to_string(),
     };
-    let session_text = if live || model.kwh > 0.0 {
+    let session_text = if live && model.partial_kwh > 0.0 {
+        // Partial energy is a lower bound: shown as "at least", never as a complete total, and never with a cost.
+        format!("{}: >= {:.3} kWh, {}", l.session, model.kwh + model.partial_kwh, l.cost_unavailable)
+    } else if live || model.kwh > 0.0 {
         format!("{}: {:.3} kWh, {}", l.session, model.kwh, cost_text)
     } else {
         format!("{}: --", l.session)
@@ -282,6 +334,7 @@ fn tray_apply_tick(app: &AppHandle, tick: &Value) {
         model.state = new_state;
         model.watts = tick.get("estimatedTotalWatts").and_then(|v| v.as_f64());
         model.kwh = tick.get("sessionKwh").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        model.partial_kwh = tick.get("sessionPartialKwh").and_then(|v| v.as_f64()).unwrap_or(0.0);
         model.cost = tick.get("sessionCostApprox").and_then(|v| v.as_f64());
         model.currency = tick.get("currency").and_then(|v| v.as_str()).unwrap_or("").to_string();
         changed
@@ -311,6 +364,7 @@ fn tray_apply_status(app: &AppHandle, status: &Value) {
 // ----------------------------------------------------------------- sidecar
 
 fn handle_sidecar_line(app: &AppHandle, value: Value) {
+    mark_backend_running(app);
     match value.get("type").and_then(|t| t.as_str()).unwrap_or("") {
         "tick" => {
             tray_apply_tick(app, &value);
@@ -357,6 +411,7 @@ fn spawn_sidecar(app: &AppHandle, args: Vec<String>) -> Result<(), String> {
     *guard = Some(child);
     state.alive.store(true, Ordering::SeqCst);
     drop(guard);
+    set_backend(app, "starting", None, None);
 
     let event_app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -411,18 +466,23 @@ fn handle_terminated(app: &AppHandle, generation: u64, code: Option<i32>) {
     let decision = state.policy.lock().unwrap().on_unexpected_exit(Instant::now(), code);
     match decision {
         Decision::Restart { delay } => {
-            emit_status(app, "restarting", &format!("The monitor stopped unexpectedly (exit code {code:?}); restarting in {} s.", delay.as_secs()));
+            let message = format!("The monitor stopped unexpectedly (exit code {code:?}); restarting in {} s.", delay.as_secs());
+            emit_status(app, "restarting", &message);
+            set_backend(app, "restarting", None, Some(message));
             set_tray_state(app, TrayState::Unavailable);
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(delay).await;
                 let state = app.state::<SidecarState>();
-                if state.exit_requested.load(Ordering::SeqCst) {
+                // A manual Retry (or anything else) may have brought a sidecar up while this restart waited:
+                // never spawn a second one.
+                if state.exit_requested.load(Ordering::SeqCst) || state.alive.load(Ordering::SeqCst) {
                     return;
                 }
                 let args = spawn_args(state.monitoring_wanted.load(Ordering::SeqCst), false);
                 if let Err(err) = spawn_sidecar(&app, args) {
                     emit_status(&app, "failed", &err);
+                    set_backend(&app, "failed", Some("spawnFailed"), Some(err));
                 }
             });
         }
@@ -431,11 +491,15 @@ fn handle_terminated(app: &AppHandle, generation: u64, code: Option<i32>) {
                 GiveUpReason::RecorderLockHeld => {
                     "Another WattScope recorder already owns this database. Close it (or use Exit WattScope from its tray icon) and try again.".to_string()
                 }
+                GiveUpReason::DatabaseError => {
+                    "The database could not be opened or upgraded. Nothing was changed; see Diagnostics for the location.".to_string()
+                }
                 GiveUpReason::TooManyRestarts => {
                     "The monitor keeps stopping unexpectedly; automatic restarts were stopped. Choose Start monitoring to try again.".to_string()
                 }
             };
             emit_status(app, "failed", &message);
+            set_backend(app, "failed", Some(reason.code()), Some(message));
             set_tray_state(app, TrayState::Unavailable);
         }
     }
@@ -491,6 +555,7 @@ async fn tray_start(app: &AppHandle) {
         state.monitoring_wanted.store(true, Ordering::SeqCst);
         if let Err(err) = spawn_sidecar(app, spawn_args(true, true)) {
             emit_status(app, "failed", &err);
+            set_backend(app, "failed", Some("spawnFailed"), Some(err));
         }
     }
 }
@@ -544,6 +609,40 @@ fn set_ui_language(app: AppHandle, lang: String) {
     refresh_tray(&app);
 }
 
+/// Where the sidecar process stands (the UI asks once on start; changes arrive as `backend-state` events).
+#[tauri::command]
+fn get_backend_state(app: AppHandle) -> Value {
+    app.state::<SidecarState>().backend.lock().map(|b| b.to_json()).unwrap_or_else(|_| json!({ "state": "failed" }))
+}
+
+/// The manual Retry offered after the host has given up. It only acts in the
+/// `failed` state with no sidecar alive -- anywhere else it changes nothing, so
+/// a double click, or a click racing a restart, can never create a second
+/// sidecar (the spawn itself is also guarded) or a second session.
+#[tauri::command]
+async fn retry_sidecar(app: AppHandle) -> Value {
+    let (failed, alive) = {
+        let state = app.state::<SidecarState>();
+        let failed = state.backend.lock().map(|b| b.state == "failed").unwrap_or(false);
+        (failed, state.alive.load(Ordering::SeqCst))
+    };
+    if failed && !alive {
+        tray_start(&app).await;
+    }
+    get_backend_state(app)
+}
+
+/// Host-side facts for the Diagnostics panel: versions only, nothing about the machine.
+#[tauri::command]
+fn get_host_info(app: AppHandle) -> Value {
+    json!({
+        "appVersion": env!("CARGO_PKG_VERSION"),
+        "tauriVersion": tauri::VERSION,
+        "webviewVersion": tauri::webview_version().ok(),
+        "backend": get_backend_state(app),
+    })
+}
+
 /// Settings' "Exit WattScope" (closing the window only hides it to the tray).
 #[tauri::command]
 async fn exit_app(app: AppHandle) {
@@ -572,7 +671,7 @@ pub fn run() {
             spawn_sidecar(&handle, spawn_args(true, true)).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sidecar_request, set_ui_language, exit_app, hide_to_tray])
+        .invoke_handler(tauri::generate_handler![sidecar_request, set_ui_language, exit_app, hide_to_tray, get_backend_state, retry_sidecar, get_host_info])
         .on_window_event(|window, event| {
             // Closing the window is not exiting: hide to the tray, keep monitoring.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

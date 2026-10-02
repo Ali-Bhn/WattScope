@@ -18,9 +18,9 @@ body {
 }
 
 /* Logical properties keep the whole layout mirroring correctly under
-   dir="rtl" (Persian), not just text direction -- Part H. Components in
-   this app should prefer ps-/pe-/ms-/me- (inline-start/end) utilities over
-   pl-/pr-/ml-/mr- wherever a value differs by side. */
+   dir="rtl" (Persian), not just text direction. Components in this app
+   should prefer ps-/pe-/ms-/me-/start-/end- (inline-start/end) utilities over
+   pl-/pr-/ml-/mr-/left-/right- wherever a value differs by side. */
 
 ::-webkit-scrollbar {
   width: 10px;
@@ -34,25 +34,93 @@ body {
   border-radius: 9999px;
 }
 
+/* One visible keyboard-focus indicator for everything interactive. Mouse
+   clicks do not trigger it (:focus-visible); keyboard navigation always does. */
+:focus-visible {
+  outline: 2px solid theme("colors.accent.blue");
+  outline-offset: 2px;
+}
+
+/* A short, calm interface: no motion for people who ask for none. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .card {
   @apply rounded-card border border-surface-border bg-surface-1 p-4 shadow-sm;
 }
 
+/* Buttons: one base, three variants. */
 .btn {
   @apply inline-flex items-center justify-center gap-2 rounded-md border border-surface-border
     bg-surface-2 px-3 py-1.5 text-sm font-medium text-ink-primary transition-colors
-    hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50;
+    hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60;
 }
 
 .btn-primary {
   @apply border-transparent bg-accent-green text-surface-0 hover:brightness-110;
 }
 
+.btn-danger {
+  @apply border-red-400/50 bg-red-500/15 text-red-200 hover:bg-red-500/25;
+}
+
+.btn-quiet {
+  @apply border-transparent bg-transparent text-ink-secondary hover:bg-surface-2 hover:text-ink-primary;
+}
+
 .input {
   @apply rounded-md border border-surface-border bg-surface-2 px-3 py-1.5 text-sm text-ink-primary
-    placeholder:text-ink-muted focus:border-accent-blue focus:outline-none;
+    placeholder:text-ink-muted focus:border-accent-blue disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+.input[aria-invalid="true"] {
+  @apply border-red-400;
 }
 
 .label {
-  @apply text-xs font-medium uppercase tracking-wide text-ink-secondary;
+  @apply text-xs font-medium tracking-wide text-ink-secondary;
+}
+
+/* Status badge: always a glyph AND words, never colour alone. */
+.badge {
+  @apply inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold leading-4;
+}
+
+/* Data tables: one look everywhere. */
+.table {
+  @apply w-full text-sm;
+}
+.table th {
+  @apply whitespace-nowrap p-2 text-start text-xs font-medium text-ink-secondary;
+}
+.table td {
+  @apply p-2 align-top;
+}
+.table tbody tr {
+  @apply border-t border-surface-border/60;
+}
+
+dialog.modal {
+  @apply m-auto w-[min(32rem,calc(100vw-2rem))] rounded-card border border-surface-border bg-surface-1 p-5 text-ink-primary shadow-xl;
+}
+dialog.modal::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+@keyframes wattscope-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinner {
+  @apply inline-block h-4 w-4 rounded-full border-2 border-surface-3 border-t-accent-blue;
+  animation: wattscope-spin 0.9s linear infinite;
 }

@@ -1,4 +1,5 @@
 using WattScope.Core.Gaming;
+using WattScope.Core.Reporting;
 using WattScope.Storage;
 
 namespace WattScope.Probe.Serve;
@@ -27,9 +28,11 @@ internal static class GamingHandlers
     {
         var prices = store.GetPriceSchedule();
         var now = DateTimeOffset.UtcNow;
-        return store.ListGamingSessions(request.Limit ?? 50, request.GameKey)
-            .Select(record => GamingAnalytics.Summarize(record, prices, now))
-            .ToList();
+        // A local day (as in the energy reports) lists exactly the sessions that started on it, however many there were.
+        var records = request.Day is { } day
+            ? store.ListGamingSessionsBetween(ReportPeriods.LocalDay(day, TimeZoneInfo.Local).StartUtc, ReportPeriods.LocalDay(day, TimeZoneInfo.Local).EndUtc, request.Limit ?? 200)
+            : store.ListGamingSessions(request.Limit ?? 50, request.GameKey);
+        return records.Select(record => GamingAnalytics.Summarize(record, prices, now)).ToList();
     }
 
     public static object Session(SqliteEnergyStore store, ServeRequest request)

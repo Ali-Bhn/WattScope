@@ -356,6 +356,7 @@ public sealed class MonitoringController : IAsyncDisposable
             SessionCompleteness = completeness,
             SessionSeconds = totals.MonitoredSeconds,
             SessionKwh = (double)EnergyUnits.ToKwh(totals.EstimatedCompleteJoules),
+            SessionPartialKwh = (double)EnergyUnits.ToKwh(totals.EstimatedPartialJoules),
             // A running cost is only shown for a session whose estimate is
             // Complete. A partial/none session has no complete wall estimate
             // to price; showing the (tiny or zero) complete-only figure would

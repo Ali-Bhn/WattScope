@@ -174,6 +174,20 @@ public sealed partial class SqliteEnergyStore
             });
     }
 
+    /// <summary>Gaming sessions that started in [from, to) -- a local day's worth, newest first. Uses the started-time index.</summary>
+    public IReadOnlyList<GamingSessionRecord> ListGamingSessionsBetween(DateTimeOffset fromUtc, DateTimeOffset toUtc, int limit = 200)
+    {
+        limit = Math.Clamp(limit, 1, 1000);
+        return QueryGamingSessions(
+            "WHERE started_utc_ms >= $from AND started_utc_ms < $to ORDER BY started_utc_ms DESC, id DESC LIMIT $limit",
+            c =>
+            {
+                c.Parameters.AddWithValue("$from", fromUtc.ToUnixTimeMilliseconds());
+                c.Parameters.AddWithValue("$to", toUtc.ToUnixTimeMilliseconds());
+                c.Parameters.AddWithValue("$limit", limit);
+            });
+    }
+
     /// <summary>Every gaming session (used for per-game aggregates). Bounded by what a person can play, not by sampling rate.</summary>
     public IReadOnlyList<GamingSessionRecord> ListAllGamingSessions() =>
         QueryGamingSessions("ORDER BY started_utc_ms", _ => { });

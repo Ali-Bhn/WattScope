@@ -20,7 +20,8 @@ export default {
         ink: {
           primary: "#e7eaef",
           secondary: "#9aa3b2",
-          muted: "#5f6774",
+          // Raised from #5f6774 (3.1:1 on the card surface) so small muted text meets 4.5:1.
+          muted: "#8b94a3",
         },
       },
       fontFamily: {

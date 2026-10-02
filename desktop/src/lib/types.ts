@@ -37,7 +37,10 @@ export interface TickMessage {
   /** Completeness of the whole session so far; a cost is only ever shown for a complete session. */
   sessionCompleteness: EstimateCompleteness;
   sessionSeconds: number;
+  /** Complete estimated energy so far. Never includes sessionPartialKwh. */
   sessionKwh: number;
+  /** Partial (lower-bound) estimated energy so far, reported separately. */
+  sessionPartialKwh: number;
   sessionCostApprox: number | null;
   currency: string | null;
   elevated: boolean;
@@ -53,6 +56,86 @@ export interface StatusMessage {
   cpuAvailable?: boolean | null;
   gpuAvailable?: boolean | null;
   message?: string | null;
+}
+
+/** The sidecar *process*, as supervised by the host (distinct from whether monitoring is recording). */
+export type BackendPhase = "starting" | "running" | "restarting" | "failed";
+
+/** Why the host stopped retrying; localized by the UI (the host's message is technical detail only). */
+export type BackendFailureReason = "recorderLockHeld" | "databaseError" | "tooManyRestarts" | "spawnFailed";
+
+export interface BackendState {
+  state: BackendPhase;
+  reason?: BackendFailureReason | null;
+  message?: string | null;
+}
+
+export interface HostInfo {
+  appVersion: string;
+  tauriVersion: string;
+  webviewVersion: string | null;
+  backend: BackendState;
+}
+
+export interface AppState {
+  firstRunCompleted: boolean;
+  appVersion: string | null;
+  schemaVersion: number;
+}
+
+export interface PriceInfo {
+  /** The schedule's currency, or null while no price exists yet. */
+  currency: string | null;
+  defaultCurrency: string;
+  current: ElectricityPrice | null;
+  entries: ElectricityPrice[];
+  maxPricePerKwh: number;
+  maxDecimals: number;
+}
+
+export interface PricePreview {
+  effectiveFromUtc: string;
+  affectsRecordedEnergy: boolean;
+  affectedSessions: number;
+  affectedMonitoredSeconds: number;
+}
+
+export interface Diagnostics {
+  appVersion: string | null;
+  runtime: string;
+  os: string | null;
+  architecture: string | null;
+  elevated: boolean;
+  databasePath: string;
+  schemaVersion: number;
+  databaseBytes: number;
+  monitoringState: "idle" | "recording";
+  monitoringIntervalMs: number;
+  sessionId: number | null;
+  completeness: EstimateCompleteness | null;
+  cpuAvailable: boolean;
+  gpuAvailable: boolean;
+  providers: { id: string; available: boolean; reason: string | null; requiresElevation: boolean }[] | null;
+  sensors: { channel: string; provider: string; hardware: string; sensor: string }[] | null;
+}
+
+export interface HistoryDeletionPreview {
+  cutoffUtc: string;
+  sessions: number;
+  energyBuckets: number;
+  powerSamples: number;
+  gaps: number;
+  gamingSessions: number;
+  oldestStartedUtc: string | null;
+  newestEndedUtc: string | null;
+}
+
+export interface MaintenanceResult {
+  rawSamplesPruned: number;
+  freePagesBefore: number;
+  freePagesAfter: number;
+  bytesBefore: number;
+  bytesAfter: number;
 }
 
 export interface EnergyTotals {
@@ -151,6 +234,8 @@ export interface StorageStatistics {
   gaps: number;
   availabilityRows: number;
   prices: number;
+  gamingSessions: number;
+  gameMappings: number;
   rawRetentionDays: number;
   oldestSampleUtc: string | null;
   newestSampleUtc: string | null;

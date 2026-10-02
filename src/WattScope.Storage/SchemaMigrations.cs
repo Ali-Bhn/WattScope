@@ -11,6 +11,20 @@ public sealed class DatabaseSchemaTooNewException(int found, int supported)
 }
 
 /// <summary>
+/// A schema migration failed. Each migration runs in one transaction, so the
+/// database is left exactly as it was (still at <see cref="FromVersion"/>);
+/// <see cref="BackupPath"/> is a consistent copy made before the attempt, when
+/// one could be made.
+/// </summary>
+public sealed class DatabaseMigrationException(int fromVersion, int failedVersion, string? backupPath, Exception inner)
+    : Exception($"Upgrading the database from schema version {fromVersion} failed at version {failedVersion}: {inner.Message} The database was left unchanged{(backupPath is null ? "." : $"; a backup was kept at {backupPath}.")}", inner)
+{
+    public int FromVersion { get; } = fromVersion;
+    public int FailedVersion { get; } = failedVersion;
+    public string? BackupPath { get; } = backupPath;
+}
+
+/// <summary>
 /// Raised when a second Active session is created/reopened in a database that
 /// already has one. The database enforces this (<c>ux_session_single_active</c>),
 /// so it holds even if two processes race past their own in-memory checks.
@@ -258,7 +272,7 @@ internal static class SchemaMigrations
         return Convert.ToInt32(command.ExecuteScalar());
     }
 
-    public static void Apply(SqliteConnection connection, ILogger? logger)
+    public static void Apply(SqliteConnection connection, ILogger? logger, string? backupPath = null)
     {
         var current = GetVersion(connection);
         if (current > LatestVersion)
@@ -266,14 +280,23 @@ internal static class SchemaMigrations
 
         foreach (var migration in All.Where(m => m.Version > current))
         {
-            using var transaction = connection.BeginTransaction();
-            using (var command = connection.CreateCommand())
+            try
             {
-                command.Transaction = transaction;
-                command.CommandText = migration.Sql + $"\nPRAGMA user_version = {migration.Version};";
-                command.ExecuteNonQuery();
+                using var transaction = connection.BeginTransaction();
+                using (var command = connection.CreateCommand())
+                {
+                    command.Transaction = transaction;
+                    command.CommandText = migration.Sql + $"\nPRAGMA user_version = {migration.Version};";
+                    command.ExecuteNonQuery();
+                }
+                transaction.Commit();
             }
-            transaction.Commit();
+            catch (SqliteException ex)
+            {
+                // The transaction was disposed uncommitted, i.e. rolled back: nothing of this migration remains.
+                logger?.LogError(ex, "Database migration {Version} failed and was rolled back", migration.Version);
+                throw new DatabaseMigrationException(current, migration.Version, backupPath, ex);
+            }
             logger?.LogInformation("Applied database migration {Version}: {Description}", migration.Version, migration.Description);
         }
     }

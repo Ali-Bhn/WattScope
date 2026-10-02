@@ -4,31 +4,26 @@ import { invoke } from "@tauri-apps/api/core";
 import en from "@/locales/en.json";
 import de from "@/locales/de.json";
 import fa from "@/locales/fa.json";
+import { setFormatLanguage } from "@/lib/format";
+import { documentAttributes, normalizeLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/language";
 
-export const SUPPORTED_LANGUAGES = ["en", "de", "fa"] as const;
-export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+export { SUPPORTED_LANGUAGES, type SupportedLanguage };
 
-const RTL_LANGUAGES: readonly SupportedLanguage[] = ["fa"];
 const STORAGE_KEY = "wattscope.language";
 
-export function isRtl(lang: string): boolean {
-  return RTL_LANGUAGES.includes(lang as SupportedLanguage);
-}
-
-/** Sets <html dir/lang> -- the whole layout mirrors via CSS logical properties, not just text (Part H). */
+/** Sets <html dir/lang> -- the whole layout mirrors via CSS logical properties, not just text. */
 export function applyDocumentDirection(lang: string) {
-  document.documentElement.dir = isRtl(lang) ? "rtl" : "ltr";
-  document.documentElement.lang = lang;
+  const attributes = documentAttributes(lang);
+  document.documentElement.dir = attributes.dir;
+  document.documentElement.lang = attributes.lang;
 }
 
 function storedLanguage(): SupportedLanguage {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && (SUPPORTED_LANGUAGES as readonly string[]).includes(stored)) return stored as SupportedLanguage;
+    return normalizeLanguage(localStorage.getItem(STORAGE_KEY));
   } catch {
-    // storage unavailable: fall back to English
+    return "en"; // storage unavailable
   }
-  return "en";
 }
 
 /** The native tray menu follows the UI language (it is not rendered by React). */
@@ -36,18 +31,22 @@ function syncHostLanguage(lang: string) {
   invoke("set_ui_language", { lang }).catch(() => undefined); // not running inside Tauri (e.g. a plain browser): nothing to sync
 }
 
+const initial = storedLanguage();
+setFormatLanguage(initial);
+
 void i18n.use(initReactI18next).init({
   resources: {
     en: { translation: en },
     de: { translation: de },
     fa: { translation: fa },
   },
-  lng: storedLanguage(),
+  lng: initial,
   fallbackLng: "en",
   interpolation: { escapeValue: false },
 });
 
 i18n.on("languageChanged", (lang) => {
+  setFormatLanguage(lang); // dates and numbers follow the language; set before React re-renders
   applyDocumentDirection(lang);
   try {
     localStorage.setItem(STORAGE_KEY, lang);

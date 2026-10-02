@@ -44,6 +44,7 @@ public sealed record StorageStatistics
 public sealed partial class SqliteEnergyStore : IEnergyStore, IGamingStore, IDisposable
 {
     public const int DefaultRawRetentionDays = 7;
+    public const int MaxRawRetentionDays = 3650;
     private const string RawRetentionKey = "raw_retention_days";
 
     /// <summary>Stored in place of NULL for an unpriced price-split segment; WITHOUT ROWID primary key columns cannot be NULL.</summary>
@@ -101,13 +102,45 @@ public sealed partial class SqliteEnergyStore : IEnergyStore, IGamingStore, IDis
             Execute(connection, "PRAGMA journal_mode = WAL;");
             Execute(connection, "PRAGMA synchronous = NORMAL;");
             Execute(connection, "PRAGMA foreign_keys = ON;");
-            SchemaMigrations.Apply(connection, logger);
+            var backupPath = BackupBeforeMigration(connection, fullPath, logger);
+            SchemaMigrations.Apply(connection, logger, backupPath);
             return new SqliteEnergyStore(fullPath, connection, logger);
         }
         catch
         {
             connection.Dispose();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Before upgrading an existing database, keeps a consistent copy next to it
+    /// (<c>VACUUM INTO</c>, safe while the file is in use). Skipped for a new
+    /// database and when already current; an existing backup of the same
+    /// starting version is kept rather than overwritten. A failed backup is
+    /// logged and does not block the (transactional) migration.
+    /// </summary>
+    private static string? BackupBeforeMigration(SqliteConnection connection, string databasePath, ILogger? logger)
+    {
+        var version = SchemaMigrations.GetVersion(connection);
+        if (version <= 0 || version >= SchemaMigrations.LatestVersion)
+            return null;
+        var backupPath = $"{databasePath}.pre-migration-v{version}.bak";
+        try
+        {
+            if (File.Exists(backupPath))
+                return backupPath;
+            using var command = connection.CreateCommand();
+            command.CommandText = "VACUUM INTO $path;";
+            command.Parameters.AddWithValue("$path", backupPath);
+            command.ExecuteNonQuery();
+            logger?.LogInformation("Kept a backup of the schema v{Version} database at {Path} before migrating", version, backupPath);
+            return backupPath;
+        }
+        catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
+        {
+            logger?.LogWarning(ex, "Could not back up the database before migrating; continuing with the transactional migration");
+            return null;
         }
     }
 
@@ -791,10 +824,17 @@ public sealed partial class SqliteEnergyStore : IEnergyStore, IGamingStore, IDis
         var prices = new List<ElectricityPrice>();
         while (reader.Read())
         {
+            // A row that cannot be read back (hand-edited / damaged) is skipped and logged, never
+            // guessed at: dropping it leaves that energy unpriced, which reports show as unpriced.
+            if (!decimal.TryParse(reader.GetString(1), NumberStyles.Number, CultureInfo.InvariantCulture, out var price) || price < 0)
+            {
+                _logger?.LogWarning("Ignoring an unreadable electricity price row (effective {Effective})", reader.GetInt64(0));
+                continue;
+            }
             prices.Add(new ElectricityPrice
             {
                 EffectiveFromUtc = FromMs(reader.GetInt64(0)),
-                PricePerKwh = decimal.Parse(reader.GetString(1), NumberStyles.Number, CultureInfo.InvariantCulture),
+                PricePerKwh = price,
                 Currency = reader.GetString(2)
             });
         }
@@ -804,6 +844,9 @@ public sealed partial class SqliteEnergyStore : IEnergyStore, IGamingStore, IDis
     /// <summary>Adds a price entry. Validated against the existing schedule (single currency, unique effective time) before writing.</summary>
     public void AddPrice(ElectricityPrice price, DateTimeOffset nowUtc)
     {
+        // Effective times are stored in whole milliseconds; validate the value that will actually be stored,
+        // so two prices in the same millisecond (a double click) are refused cleanly rather than by the database.
+        price = price with { EffectiveFromUtc = FromMs(price.EffectiveFromUtc.ToUnixTimeMilliseconds()) };
         _ = new ElectricityPriceSchedule([.. GetPriceSchedule().Entries, price]);
 
         using var command = _connection.CreateCommand();
@@ -826,13 +869,24 @@ public sealed partial class SqliteEnergyStore : IEnergyStore, IGamingStore, IDis
         using var reader = command.ExecuteReader();
         if (!reader.Read())
             return new EstimationSettings();
-        return new EstimationSettings
+        var stored = new EstimationSettings
         {
             OtherComponentsWatts = reader.GetDouble(0),
             PsuEfficiency = reader.GetDouble(1),
             IncludeCpuPackage = reader.GetBoolean(2),
             IncludeGpuBoard = reader.GetBoolean(3)
         };
+        try
+        {
+            stored.Validate();
+            return stored;
+        }
+        catch (ArgumentException)
+        {
+            // A persisted row outside the valid ranges must not feed energy maths: fall back to the documented defaults.
+            _logger?.LogWarning("Stored estimation settings are invalid; using the defaults");
+            return new EstimationSettings();
+        }
     }
 
     public void SaveEstimationSettings(EstimationSettings settings, DateTimeOffset nowUtc)
@@ -887,14 +941,15 @@ public sealed partial class SqliteEnergyStore : IEnergyStore, IGamingStore, IDis
         command.CommandText = "SELECT value FROM app_setting WHERE key = $k;";
         command.Parameters.AddWithValue("$k", RawRetentionKey);
         return command.ExecuteScalar() is string s && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var days)
+            && days is >= 0 and <= MaxRawRetentionDays
             ? days
             : DefaultRawRetentionDays;
     }
 
     public void SetRawRetentionDays(int days)
     {
-        if (days is < 0 or > 3650)
-            throw new ArgumentOutOfRangeException(nameof(days), days, "Raw sample retention must be between 0 and 3650 days.");
+        if (days is < 0 or > MaxRawRetentionDays)
+            throw new ArgumentOutOfRangeException(nameof(days), days, $"Raw sample retention must be between 0 and {MaxRawRetentionDays} days.");
         using var command = _connection.CreateCommand();
         command.CommandText = "INSERT INTO app_setting (key, value) VALUES ($k, $v) ON CONFLICT (key) DO UPDATE SET value = excluded.value;";
         command.Parameters.AddWithValue("$k", RawRetentionKey);
@@ -919,7 +974,7 @@ public sealed partial class SqliteEnergyStore : IEnergyStore, IGamingStore, IDis
         }
         if (deleted > 0)
         {
-            Execute(_connection, "PRAGMA incremental_vacuum;");
+            ReturnFreePages();
             _logger?.LogInformation("Pruned {Count} raw samples older than {Cutoff:O}", deleted, cutoff);
         }
         return deleted;
@@ -952,10 +1007,10 @@ public sealed partial class SqliteEnergyStore : IEnergyStore, IGamingStore, IDis
         };
     }
 
-    /// <summary>Runs SQLite's integrity and foreign-key checks. Returns "ok" when both pass.</summary>
-    public string CheckIntegrity()
+    /// <summary>Runs SQLite's integrity (or the cheaper quick) check plus the foreign-key check. Returns "ok" when both pass.</summary>
+    public string CheckIntegrity(bool quick = false)
     {
-        var integrity = Scalar<string>(_connection, "PRAGMA integrity_check;") ?? "no result";
+        var integrity = Scalar<string>(_connection, quick ? "PRAGMA quick_check;" : "PRAGMA integrity_check;") ?? "no result";
         using var command = _connection.CreateCommand();
         command.CommandText = "PRAGMA foreign_key_check;";
         using var reader = command.ExecuteReader();

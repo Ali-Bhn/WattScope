@@ -3,40 +3,132 @@
     "title": "WattScope"
   },
   "nav": {
+    "label": "Hauptnavigation",
     "dashboard": "Übersicht",
     "gaming": "Gaming",
     "reports": "Berichte",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "status": {
+      "recording": "Die Überwachung läuft",
+      "stopped": "Die Überwachung ist gestoppt",
+      "down": "Der Hintergrund-Monitor läuft nicht"
+    }
+  },
+  "badge": {
+    "measured": "GEMESSEN",
+    "estimated": "GESCHÄTZT",
+    "partial": "TEILWEISE",
+    "unavailable": "NICHT VERFÜGBAR",
+    "complete": "VOLLSTÄNDIG",
+    "assumed": "ANGENOMMEN"
+  },
+  "completeness": {
+    "complete": "Vollständig",
+    "partial": "Teilweise (untere Grenze)",
+    "none": "Keine Schätzung"
+  },
+  "readingState": {
+    "valid": "Gemessen",
+    "missing": "Kein Messwert",
+    "unavailable": "Sensor nicht verfügbar",
+    "nonFinite": "Ungültiger Messwert",
+    "negative": "Ungültiger Messwert",
+    "aboveMaximum": "Messwert außerhalb des Bereichs",
+    "implausibleZero": "Zeigt 0 W (nicht plausibel)",
+    "ambiguous": "Sensor ist mehrdeutig",
+    "notPresent": "Auf diesem PC nicht vorhanden"
+  },
+  "terms": {
+    "systemPower": "Geschätzte Systemleistung",
+    "cpuPower": "CPU-Paketleistung",
+    "gpuPower": "GPU-Boardleistung",
+    "otherPower": "Sonstige Komponenten (angenommen)",
+    "psuEfficiency": "Netzteil-Wirkungsgrad (angenommen)",
+    "cpuEnergy": "CPU-Paketenergie",
+    "gpuEnergy": "GPU-Boardenergie",
+    "energy": "Geschätzte Systemenergie",
+    "cost": "Stromkosten (geschätzt)",
+    "monitoringSession": "Überwachungssitzung",
+    "monitoringSessions": "Überwachungssitzungen",
+    "gamingSession": "Spielsitzung"
+  },
+  "common": {
+    "loading": "Wird geladen...",
+    "working": "Wird ausgeführt...",
+    "retry": "Erneut versuchen",
+    "save": "Speichern",
+    "saved": "Gespeichert",
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "na": "n. v.",
+    "moreInfo": "Weitere Informationen"
+  },
+  "errors": {
+    "details": "Technische Details",
+    "backendUnavailable": {
+      "title": "Der Hintergrund-Monitor antwortet nicht",
+      "hint": "WattScope startet seinen Monitor gerade oder startet ihn neu. Warten Sie einen Moment und versuchen Sie es erneut; falls es weiter fehlschlägt, lesen Sie die Meldung am oberen Fensterrand."
+    },
+    "timeout": {
+      "title": "Der Monitor hat zu lange für die Antwort gebraucht",
+      "hint": "Möglicherweise ist er ausgelastet. Versuchen Sie es in einem Moment erneut."
+    },
+    "database": {
+      "title": "Die Datenbank konnte nicht gelesen oder geschrieben werden",
+      "hint": "Ihre Daten wurden nicht verändert. Prüfen Sie, ob der Datenträger verfügbar und nicht voll ist, und versuchen Sie es erneut. Den Speicherort der Datenbank finden Sie unter Einstellungen, Diagnose."
+    },
+    "validation": {
+      "title": "Das ließ sich nicht ausführen",
+      "hint": "Die Anfrage wurde abgelehnt. Die technischen Details unten nennen den Grund."
+    },
+    "internal": {
+      "title": "In WattScope ist etwas schiefgelaufen",
+      "hint": "Versuchen Sie es erneut. Tritt es weiter auf, kopieren Sie die Diagnose aus den Einstellungen und fügen Sie sie einem Fehlerbericht bei."
+    }
+  },
+  "backend": {
+    "starting": "Der Hintergrund-Monitor wird gestartet...",
+    "restarting": {
+      "title": "Der Hintergrund-Monitor wurde beendet und startet neu",
+      "hint": "WattScope startet ihn automatisch neu. Die Lücke wird ehrlich festgehalten: Für die Zeit, in der er nicht lief, wird keine Energie erfunden."
+    },
+    "failed": {
+      "title": "Der Hintergrund-Monitor läuft nicht"
+    },
+    "retrying": "Neuer Versuch...",
+    "retryFailed": "Der Monitor konnte nicht erneut gestartet werden.",
+    "reason": {
+      "tooManyRestarts": "Der Monitor wurde wiederholt unerwartet beendet, daher wurden die automatischen Neustarts eingestellt. Es wird nichts aufgezeichnet. Wählen Sie Erneut versuchen, um ihn wieder zu starten.",
+      "recorderLockHeld": "Ein anderes WattScope zeichnet bereits in diese Datenbank auf. Schließen Sie es (WattScope beenden im Infobereich-Symbol) und wählen Sie dann Erneut versuchen.",
+      "databaseError": "Die Datenbank konnte nicht geöffnet oder aktualisiert werden, daher kann nichts aufgezeichnet werden. Ihre Daten wurden nicht verändert. Ihren Speicherort finden Sie in der Diagnose; wählen Sie dann Erneut versuchen.",
+      "spawnFailed": "Das Monitor-Programm konnte nicht gestartet werden. Meist hilft eine Neuinstallation von WattScope. Wählen Sie Erneut versuchen, um es noch einmal zu probieren."
+    }
+  },
+  "validation": {
+    "empty": "Bitte einen Wert eingeben.",
+    "notNumber": "Bitte eine Zahl eingeben, zum Beispiel 0,30.",
+    "notInteger": "Bitte eine ganze Zahl eingeben.",
+    "belowMin": "Bitte mindestens {{min}} eingeben.",
+    "aboveMax": "Bitte höchstens {{max}} eingeben.",
+    "tooManyDecimals": "Höchstens {{decimals}} Nachkommastellen verwenden.",
+    "currency": "Bitte einen dreistelligen Währungscode eingeben, zum Beispiel EUR.",
+    "dateTime": "Bitte ein gültiges Datum mit Uhrzeit eingeben."
+  },
+  "chart": {
+    "title": "Live-Leistung",
+    "cpu": "CPU",
+    "gpu": "GPU",
+    "total": "Geschätzt gesamt",
+    "noData": "Warte auf Messwerte...",
+    "ariaLabel": "Liniendiagramm der CPU-, GPU- und geschätzten Gesamtleistung der letzten Minuten",
+    "note": "Eine Lücke in einer Linie bedeutet, dass dieser Messwert zu der Zeit nicht verfügbar war; er wird nie als 0 W gezeichnet."
   },
   "dashboard": {
-    "systemPower": "Geschätzte Systemleistung",
-    "cpuPower": "CPU-Paket",
-    "gpuPower": "GPU-Platine",
-    "otherPower": "Sonstige Komponenten (angenommen)",
-    "sessionDuration": "Sitzungsdauer",
-    "sessionEnergy": "Energie dieser Sitzung",
-    "sessionCost": "Kosten dieser Sitzung",
-    "sensorAvailability": "Sensorverfügbarkeit",
-    "estimateCompleteness": "Vollständigkeit der Schätzung",
-    "monitoringStatus": "Überwachungsstatus",
-    "unavailable": "Nicht verfügbar",
-    "notElevated": "Nicht erhöht -- CPU-Leistung nicht verfügbar",
-    "approxCost": "ungefähr, live",
-    "estimatedBadge": "GESCHÄTZT",
-    "measuredBadge": "GEMESSEN",
-    "status": {
-      "recording": "Aufzeichnung läuft",
-      "suspended": "Ausgesetzt (Ruhezustand)",
-      "stopped": "Gestoppt",
-      "error": "Fehler",
-      "recovered": "Wiederhergestellt",
-      "resumed": "Fortgesetzt"
-    },
-    "completeness": {
-      "complete": "Vollständig",
-      "partial": "Teilweise (untere Grenze)",
-      "none": "Keine Schätzung"
-    },
+    "title": "Übersicht",
+    "subtitle": "Was WattScope gerade misst.",
+    "interval": "Messintervall",
+    "startMonitoring": "Überwachung starten",
+    "stopMonitoring": "Überwachung stoppen",
     "quality": {
       "starting": "Startet...",
       "complete": "Vollständige Überwachung",
@@ -47,25 +139,41 @@
     },
     "qualityHelp": {
       "starting": "Warte auf den ersten Messwert...",
-      "partial": "Die CPU-Leistung ist nicht verfügbar (WattScope läuft auf einem Rechner, der es braucht, nicht als Administrator). Die GPU wird weiterhin überwacht. Der Systemwert ist eine untere Grenze, Kosten werden nicht angezeigt.",
+      "partial": "Die CPU-Leistung ist nicht verfügbar, daher sind die Systemwerte untere Grenzen und es werden keine Kosten angezeigt. Die GPU wird weiterhin überwacht.",
       "sensorUnavailable": "Derzeit ist kein benötigter Sensor verfügbar, daher gibt es keine Schätzung.",
-      "stopped": "Es wird nichts aufgezeichnet. Das Schließen dieses Fensters beendet die Überwachung nicht -- nur Überwachung stoppen oder Beenden tut das.",
-      "unavailable": "Der Hintergrund-Monitor läuft nicht. Wählen Sie Überwachung starten, um ihn wieder zu starten."
+      "stopped": "Es wird nichts aufgezeichnet. Das Schließen dieses Fensters beendet die Überwachung nicht; nur Überwachung stoppen oder Beenden tut das.",
+      "unavailable": "Der Hintergrund-Monitor läuft nicht. Siehe die Meldung oben."
     },
-    "startMonitoring": "Überwachung starten",
-    "stopMonitoring": "Überwachung stoppen",
-    "costWithheld": "Kosten werden nicht angezeigt, solange die Schätzung unvollständig ist"
-  },
-  "chart": {
-    "title": "Live-Leistung",
-    "cpu": "CPU",
-    "gpu": "GPU",
-    "total": "Geschätzt gesamt",
-    "noData": "Warte auf Messwerte..."
+    "sections": {
+      "power": "Aktuelle Leistung",
+      "session": "Diese Überwachungssitzung",
+      "sensors": "Sensoren"
+    },
+    "hints": {
+      "systemPower": "Geschätzte Systemleistung = (CPU-Paket + GPU-Board + sonstige Komponenten) / Netzteil-Wirkungsgrad. Sie wird aus Sensorwerten und zwei einstellbaren Annahmen berechnet; sie wird nicht an der Steckdose gemessen.",
+      "otherPower": "Ein von Ihnen festgelegter konstanter Wert für alles, was WattScope nicht messen kann: Mainboard, Arbeitsspeicher, Laufwerke, Lüfter. Es ist eine Annahme, keine Messung."
+    },
+    "otherSub": "In den Einstellungen festgelegt",
+    "lowerBound": "Untere Grenze (teilweise)",
+    "noReading": {
+      "waiting": "Warte auf einen Messwert",
+      "stopped": "Die Überwachung ist gestoppt"
+    },
+    "sessionDurationSub": "Bisher überwachte Zeit",
+    "approxCost": "ungefähr, live; die genauen Kosten stehen in den Berichten",
+    "costWithheld": "Wird nicht angezeigt, solange die Schätzung unvollständig ist",
+    "setPrice": "Strompreis festlegen, um Kosten zu sehen",
+    "partialEnergyNote": "Ein Teil dieser Sitzung hatte keinen CPU-Messwert. Der Wert oben ist eine untere Grenze; davon sind {{complete}} vollständige Energie.",
+    "partialEnergyNoteNone": "Diese Sitzung hatte keinen CPU-Messwert, daher ist keine ihrer Energie vollständig. Der Wert oben ist eine untere Grenze.",
+    "cpuNeedsAdmin": "Auf manchen PCs lässt sich der CPU-Sensor nur lesen, wenn WattScope mit Als Administrator ausführen gestartet wird. WattScope erhöht seine Rechte nie selbst.",
+    "monitorError": "Der Monitor hat ein Problem gemeldet",
+    "monitorErrorHint": "Möglicherweise wurde die Überwachung beendet. Sie können sie erneut starten; alles bisher Aufgezeichnete bleibt erhalten."
   },
   "gaming": {
     "title": "Gaming",
-    "sessionTitle": "Spielsitzung",
+    "subtitle": "Energie, die beim Spielen verbraucht wird, gemessen mit derselben Überwachung wie überall sonst.",
+    "detectionOff": "Die automatische Spielerkennung ist ausgeschaltet",
+    "detectionOffHelp": "Spiele werden nicht automatisch erkannt. Sie können weiterhin manuell eine Spielsitzung starten.",
     "live": "LIVE",
     "ending": "ENDET",
     "manualBadge": "Manuell",
@@ -77,11 +185,6 @@
     "running": "Läuft",
     "duration": "Dauer",
     "monitored": "Überwacht",
-    "gpuPower": "GPU-Leistung",
-    "cpuPower": "CPU-Leistung",
-    "systemPower": "Geschätzte Systemleistung",
-    "energy": "Energie",
-    "cost": "Geschätzte Kosten",
     "lowerBound": "Untere Grenze (teilweise)",
     "cpuUnavailable": "Nicht verfügbar",
     "partialBanner": "Teilweise: Die CPU-Leistung ist nicht verfügbar. Energie und Systemleistung sind daher untere Grenzen, und es werden keine vollständigen Kosten angezeigt. Die GPU-Werte sind weiterhin gemessen.",
@@ -107,16 +210,19 @@
     "manual": {
       "start": "Spielsitzung manuell starten",
       "stop": "Manuelle Spielsitzung beenden",
+      "hint": "Für ein Spiel, das nicht automatisch erkannt wird.",
       "help": "Nutzen Sie dies, wenn ein Spiel nicht automatisch erkannt wird. Die Sitzung folgt denselben Überwachungs- und Energieregeln wie eine automatische.",
       "name": "Spielname",
       "exe": "Programm (optional)",
       "remember": "Dieses Programm künftig automatisch erkennen",
       "begin": "Sitzung starten",
-      "requiresMonitoring": "Zuerst die Überwachung starten"
+      "requiresMonitoring": "Zuerst die Überwachung starten."
     },
     "history": {
       "title": "Spielverlauf",
       "none": "Noch keine Spielsitzungen aufgezeichnet.",
+      "noneHelp": "Eine Sitzung wird aufgezeichnet, wenn WattScope bei laufender Überwachung ein Spiel erkennt oder wenn Sie manuell eine starten.",
+      "openSession": "Details zu {{name}} anzeigen",
       "game": "Spiel",
       "start": "Beginn",
       "end": "Ende",
@@ -132,108 +238,300 @@
       "endReason": "Beendet",
       "source": "Erkannt durch",
       "executable": "Programm",
-      "avgCpu": "Mittlere CPU-Leistung",
-      "avgGpu": "Mittlere GPU-Leistung",
-      "avgSystem": "Mittlere Systemleistung (geschätzt)",
-      "peakCpu": "Spitzen-CPU-Leistung",
-      "peakGpu": "Spitzen-GPU-Leistung",
+      "avgCpu": "Mittlere CPU-Paketleistung",
+      "avgGpu": "Mittlere GPU-Boardleistung",
+      "avgSystem": "Mittlere geschätzte Systemleistung",
+      "peakCpu": "Spitzen-CPU-Paketleistung",
+      "peakGpu": "Spitzen-GPU-Boardleistung",
       "peakSystem": "Spitzen-Systemleistung (geschätzt)",
       "lowerBoundNote": "Diese Sitzung ist teilweise erfasst: Mit ≥ markierte Werte sind untere Grenzen, keine vollständigen Schätzungen.",
-      "approxPrice": "* Näherungswert: Ein Preis wurde nach der Aufzeichnung dieser Sitzung hinzugefügt, daher werden die Kosten nach Zeit aufgeteilt, nicht nach Messung."
+      "approxPrice": "* Näherungswert: Ein Preis wurde nach der Aufzeichnung dieser Sitzung hinzugefügt, daher werden die Kosten nach Zeit aufgeteilt, nicht nach Messung.",
+      "approximate": "Näherungswert",
+      "limit": "Angezeigt werden die neuesten {{count}} Sitzungen. Ältere sind weiterhin in den Summen pro Spiel unten enthalten."
     },
     "aggregates": {
       "title": "Pro Spiel",
       "help": "Vollständige und teilweise Sitzungen werden nie addiert. Mittelwerte sind zeitgewichtet, nicht pro Sitzung gemittelt.",
       "sessions": "Sitzungen",
-      "sessionsShort": "Sitzungen",
+      "partialSessions_one": "{{count}} teilweise Sitzung, keine Kosten",
+      "partialSessions_other": "{{count}} teilweise Sitzungen, keine Kosten",
       "playTime": "Spielzeit",
       "monitored": "Überwacht",
       "avgSession": "Mittlere Sitzung",
       "complete": "Vollständige Sitzungen",
       "partial": "Teilweise Sitzungen",
-      "unpriced": "ohne Preis",
-      "noCost": "keine Kosten"
+      "unpriced": "ohne Preis"
     },
     "games": {
       "title": "Spiele verwalten",
-      "help": "Markieren Sie ein Programm als Spiel, geben Sie ihm einen Namen oder schließen Sie es von der Erkennung aus. Ihre Auswahl wird nur auf diesem Computer gespeichert.",
+      "help": "Markieren Sie ein Programm als Spiel, geben Sie ihm einen Namen oder schließen Sie es von der Erkennung aus. Einträge können Sie jederzeit bearbeiten oder entfernen. Ihre Auswahl wird nur auf diesem Computer gespeichert.",
       "exe": "Programm",
       "name": "Spielname",
       "kind": "Aktion",
       "kindGame": "Ist ein Spiel",
       "kindExcluded": "Nie ein Spiel",
       "add": "Speichern",
+      "edit": "Bearbeiten",
+      "editing": "Wird bearbeitet:",
+      "editFor": "{{name}} bearbeiten",
       "remove": "Entfernen",
+      "removeFor": "{{name}} entfernen",
+      "actions": "Aktionen",
       "pick": "Laufendes Programm auswählen",
       "pickNone": "Es laufen keine infrage kommenden Programme.",
       "empty": "Noch keine Programme markiert.",
       "rename": "Umbenennen",
       "exclude": "Dieses Programm nie erkennen",
+      "actionsNote": "Das Umbenennen gilt für alle Sitzungen dieses Programms. Das Ausschließen verhindert, dass es erneut als Spiel erkannt wird; unter Spiele verwalten lässt sich das rückgängig machen.",
       "privacyNote": "Die Erkennung liest nur die Liste der laufenden Programme. WattScope berührt weder den Speicher noch die Dateien eines Spiels und interagiert nicht mit dem Spiel."
     }
   },
   "reports": {
     "title": "Berichte",
-    "currentSession": "Aktuelle Sitzung",
-    "previousSessions": "Frühere Sitzungen",
-    "daily": "Tagesenergie",
-    "monthly": "Monatlich",
-    "costHistory": "Stromkostenverlauf",
-    "noSessions": "Noch keine Sitzungen aufgezeichnet.",
+    "subtitle": "Energie und geschätzte Kosten für einen Tag, einen Monat oder eine einzelne Überwachungssitzung. Alle Zeiten sind Ihre lokale Zeit.",
+    "tabs": {
+      "today": "Heute",
+      "day": "Tag",
+      "month": "Monat",
+      "sessions": "Überwachungssitzungen"
+    },
+    "titles": {
+      "today": "Heute, {{date}}",
+      "day": "Tag {{date}}",
+      "month": "{{month}}",
+      "session": "Überwachungssitzung #{{id}}"
+    },
+    "selectDay": "Tag",
     "selectMonth": "Monat",
-    "approxNotice": "Näherungswert: Ein Preis wurde nachträglich hinzugefügt, nachdem dieser Zeitraum bereits aufgezeichnet wurde, und die für eine exakte Aufteilung nötigen Rohdaten sind nicht mehr vorhanden (Aufbewahrungsfrist abgelaufen).",
-    "replayedNotice": "Exakt: aus den während dieses Zeitraums aufgezeichneten Rohdaten rekonstruiert.",
-    "session": "Sitzung",
+    "previous": "Zurück",
+    "next": "Weiter",
+    "previousDay": "Vorheriger Tag",
+    "nextDay": "Nächster Tag",
+    "previousMonth": "Vorheriger Monat",
+    "nextMonth": "Nächster Monat",
+    "thisMonth": "Dieser Monat",
+    "invalidDate": "Das ist kein gültiges Datum.",
+    "noData": "In diesem Zeitraum wurde nichts überwacht. WattScope zeichnet nur auf, solange die Überwachung läuft.",
+    "monitoredTime": "Überwachte Zeit",
+    "systemEnergy": "Geschätzte Systemenergie",
+    "hints": {
+      "systemEnergy": "Für den gesamten PC geschätzte Energie aus CPU- und GPU-Messungen plus Ihren Annahmen. Zeit, in der alle benötigten Sensoren funktionierten, ist vollständig; Zeit mit fehlendem Sensor ist teilweise und nur eine untere Grenze. Beides wird nie addiert."
+    },
+    "completeOnly": "Nur vollständige Zeit. Zusätzlich:",
+    "partialOnly": "Nur teilweise: eine untere Grenze",
+    "noEstimate": "Keine Schätzung für diesen Zeitraum",
+    "notMeasured": "In diesem Zeitraum nicht gemessen",
+    "costCompleteOnly": "Nur vollständige Energie",
+    "costPartialOnly": "Untere Grenze: nur teilweise Energie",
+    "costNoPrice": "Kein Strompreis deckte diese Energie ab",
+    "costNone": "Keine Kosten verfügbar",
+    "partialCostNote": "Die teilweise Energie käme mindestens hinzu",
+    "unpriced": "Energie wurde verbraucht, bevor es einen Strompreis gab; sie ist nicht bepreist und wird nicht als kostenlos gezählt.",
+    "gaps_one": "{{count}} Überwachungslücke",
+    "gaps_other": "{{count}} Überwachungslücken",
+    "gapsNote": "für Lücken wird keine Energie aufgezeichnet",
+    "uncovered": "der überwachten Zeit hatten keine verwertbare Schätzung.",
+    "replayedNotice": "Exakt: aus den in diesem Zeitraum aufgezeichneten Rohdaten rekonstruiert.",
+    "approxNotice": "Näherungswert: Ein Preis wurde hinzugefügt, nachdem dieser Zeitraum aufgezeichnet wurde, und die für eine exakte Aufteilung nötigen Rohdaten sind nicht mehr vorhanden.",
+    "assumptions": "Verwendete Schätzeinstellungen",
+    "assumptionsNote": "Systemenergie = (CPU-Paket + GPU-Board + sonstige Komponenten) / Netzteil-Wirkungsgrad. Sonstige Komponenten und Netzteil-Wirkungsgrad sind Annahmen, keine Messungen. Dies sind die genauen Werte für diesen Zeitraum:",
+    "gamingOnDay": "Spielsitzungen, die an diesem Tag begannen",
+    "openGaming": "Gaming öffnen",
+    "daily": "Tag für Tag",
+    "date": "Datum",
+    "completeEnergy": "Vollständige Energie",
+    "partialEnergy": "Teilweise Energie",
+    "completeness": "Vollständigkeit",
+    "approximate": "Näherungswert der Kosten",
+    "dailyNote": "Vollständige und teilweise Energie stehen in getrennten Spalten, weil sie sich nicht ehrlich addieren lassen. Die Kosten umfassen nur vollständige, bepreiste Energie.",
+    "noSessions": "Noch keine Überwachungssitzungen aufgezeichnet.",
+    "noSessionsHelp": "Eine Überwachungssitzung beginnt, wenn Sie die Überwachung starten. Öffnen Sie dazu die Übersicht.",
     "started": "Begonnen",
-    "ended": "Beendet",
-    "duration": "Dauer",
-    "energy": "Energie",
-    "cost": "Kosten",
-    "costUnavailable": "n. v."
+    "sessionsNote": "Wählen Sie eine Sitzungsnummer für den vollständigen Bericht. Die laufende Sitzung wird alle paar Sekunden aktualisiert.",
+    "status": {
+      "active": "läuft",
+      "stopped": "gestoppt",
+      "interrupted": "unterbrochen"
+    }
   },
   "settings": {
     "title": "Einstellungen",
-    "electricityPrice": "Strompreis",
-    "pricePerKwh": "Preis pro kWh",
-    "currency": "Währung",
-    "effectiveFrom": "Gültig ab",
-    "effectiveNow": "Jetzt",
-    "priceHistory": "Preisverlauf",
-    "otherComponents": "Leistung sonstiger Komponenten",
-    "psuEfficiency": "Netzteil-Wirkungsgrad",
-    "monitoringInterval": "Messintervall",
-    "language": "Sprache",
-    "retention": "Aufbewahrung der Rohdaten",
-    "retentionDays": "Tage",
-    "retentionHelp": "15-Minuten-Energiesummen und der Kostenverlauf werden unabhängig von dieser Einstellung unbegrenzt aufbewahrt; nur die einzelnen Rohmesswerte werden bereinigt.",
-    "measured": "Gemessen",
-    "assumption": "Von Ihnen festgelegte Annahme -- keine Messung",
-    "save": "Speichern",
-    "saved": "Gespeichert",
-    "invalidPrice": "Bitte einen nicht-negativen Preis eingeben.",
-    "invalidEfficiency": "Der Netzteil-Wirkungsgrad muss zwischen 1 % und 100 % liegen.",
-    "invalidInterval": "Das Intervall muss mindestens 250 ms betragen.",
-    "background": {
-      "title": "Hintergrundüberwachung",
-      "description": "Beim Schließen dieses Fensters läuft WattScope im Infobereich weiter und die Überwachung geht weiter. WattScope läuft nur, solange Sie es gestartet haben; es startet nicht mit Windows.",
+    "subtitle": "Änderungen werden mit Speichern übernommen. Jeder Wert zeigt seine Einheit und den zulässigen Bereich.",
+    "jump": "Einstellungsgruppen",
+    "groups": {
+      "monitoring": "Überwachung",
+      "estimation": "Energieschätzung",
+      "electricity": "Strom",
+      "data": "Daten",
+      "language": "Sprache",
+      "application": "Anwendung"
+    },
+    "monitoring": {
+      "description": "Wie oft WattScope die Sensoren ausliest.",
+      "interval": "Messintervall",
+      "intervalHelp": "Zwischen 250 und 60000 ms. Ein kürzeres Intervall folgt Spitzen genauer; 1000 ms ist ein guter Standard. Eine Änderung setzt dieselbe Sitzung fort; eine kurze Lücke wird erfasst und es wird keine Energie dafür erfunden."
+    },
+    "estimation": {
+      "description": "Wie WattScope aus CPU- und GPU-Messungen eine Schätzung für den gesamten PC macht.",
+      "formulaTitle": "So entsteht die Schätzung",
+      "formula": "Geschätzte Systemleistung = (CPU-Paketleistung + GPU-Boardleistung + sonstige Komponenten) / Netzteil-Wirkungsgrad.",
+      "notWall": "CPU- und GPU-Leistung werden von Sensoren gemessen. Der Rest ist eine Annahme; es handelt sich also um eine Schätzung und nicht um eine Messung der Leistung an der Steckdose. Das würde ein Smart-Plug direkt messen.",
+      "assumptionNote": "Eine von Ihnen festgelegte Annahme, keine Messung.",
+      "otherWatts": "Sonstige Komponenten",
+      "otherWattsHelp": "Ein konstanter Wert für alles, was WattScope nicht messen kann: Mainboard, Arbeitsspeicher, Laufwerke, Lüfter. 0 bis 2000 W; bei einem Desktop-PC sind 30 bis 80 W üblich.",
+      "psuEfficiency": "Netzteil-Wirkungsgrad",
+      "psuHelp": "Welcher Anteil der aus der Steckdose bezogenen Leistung bei Ihren Komponenten ankommt. 50 bis 100 %; bei einem modernen Netzteil sind 85 bis 92 % üblich.",
+      "inputsTitle": "Erforderliche Messwerte",
+      "required": "für eine vollständige Schätzung erforderlich",
+      "notRequired": "nicht erforderlich",
+      "appliesNext": "Neue Werte gelten für Überwachungssitzungen, die ab jetzt gestartet werden. Eine bereits laufende und alle früheren Sitzungen behalten die Werte, mit denen sie aufgezeichnet wurden."
+    },
+    "electricity": {
+      "description": "Der Strompreis, der für alle Kostenschätzungen verwendet wird. Preise werden als Verlauf gespeichert.",
+      "current": "Aktueller Preis",
+      "since": "seit",
+      "noneTitle": "Es ist kein Strompreis festgelegt",
+      "none": "Ohne Preis zeigt WattScope Energie, aber keine Kosten. Kosten werden nie als null angezeigt.",
+      "newPrice": "Preis hinzufügen",
+      "pricePerKwh": "Preis pro kWh",
+      "priceHelp": "Bis zu 6 Nachkommastellen, zum Beispiel 0,3050. Höchstens 100.",
+      "currency": "Währung",
+      "currencyHelp": "Ein dreistelliger Code, zum Beispiel EUR. Er ist nach dem ersten Preis festgelegt.",
+      "currencyLocked": "Alle Preise verwenden dieselbe Währung.",
+      "effective": "Wann er gilt",
+      "fromNow": "Ab jetzt (empfohlen)",
+      "fromDate": "Ab einem bestimmten Datum und einer Uhrzeit",
+      "effectiveAt": "Beginnt am",
+      "pastWarning": "Ein Datum in der Vergangenheit ändert die geschätzten Kosten bereits aufgezeichneter Energie. WattScope zeigt Ihnen vor dem Speichern, was betroffen ist.",
+      "appendOnly": "Ein neuer Preis wird dem Verlauf hinzugefügt. Frühere Preise werden nie bearbeitet oder gelöscht, und die Kosten vergangener Energie werden nur neu berechnet, wenn Sie ein Datum in der Vergangenheit wählen.",
+      "addPrice": "Preis hinzufügen",
+      "saved": "Preis hinzugefügt: {{price}}",
+      "history": "Preisverlauf",
+      "historyEmpty": "Noch keine Preise.",
+      "from": "Gilt ab",
+      "status": "Status",
+      "statusCurrent": "aktuell",
+      "statusScheduled": "geplant",
+      "statusEarlier": "früher",
+      "historyNote": "Jeder Preis gilt, bis der nächste beginnt. Energie wird immer mit dem Preis bewertet, der galt, als sie verbraucht wurde.",
+      "confirmTitle": "Einen Preis auf die Vergangenheit anwenden?",
+      "confirmApply": "Preis anwenden",
+      "confirmBody_one": "Dieser Preis beginnt am {{date}}. Bereits aufgezeichnete Energie ab diesem Zeitpunkt, in {{count}} Überwachungssitzung, wird damit neu bewertet",
+      "confirmBody_other": "Dieser Preis beginnt am {{date}}. Bereits aufgezeichnete Energie ab diesem Zeitpunkt, in {{count}} Überwachungssitzungen, wird damit neu bewertet",
+      "confirmRecalc": "Die neuen Kosten gelten ab diesem Datum bis zur nächsten Preisänderung. Berichte für diese Tage ändern sich.",
+      "confirmKept": "Frühere Preiseinträge bleiben unverändert im Verlauf."
+    },
+    "data": {
+      "description": "Was WattScope auf diesem Computer speichert und wie Sie es pflegen. Nichts davon wird irgendwohin hochgeladen.",
+      "retention": "Rohdaten",
+      "retentionDays": "Rohdaten aufbewahren für",
+      "days": "Tage",
+      "retentionHelp": "0 bis 3650 Tage. Nach dieser Zeit werden nur die sekundengenauen Messwerte bereinigt (0 behält keine). Die 15-Minuten-Energiesummen, Kosten, Sitzungen und der Spielverlauf bleiben in jedem Fall erhalten.",
+      "storage": "Speicher",
+      "dbSize": "Datenbankgröße",
+      "gamingSessions": "Spielsitzungen",
+      "buckets": "15-Minuten-Energiesummen",
+      "rawSamples": "Rohmesswerte",
+      "prices": "Preiseinträge",
+      "rawRange": "Rohmesswerte umfassen",
+      "storageNote": "Die Datenbank ist eine einzelne lokale Datei. WattScope löscht sie nie automatisch, und eine Deinstallation entfernt Ihren Verlauf standardmäßig nicht.",
+      "maintenance": "Wartung",
+      "maintenanceHelp": "Entfernt Rohmesswerte jenseits der oben eingestellten Aufbewahrung, gibt ungenutzten Platz in kleinen Schritten an den Datenträger zurück und prüft die Datenbank. Ihre Summen, Kosten und Ihr Verlauf ändern sich dadurch nie.",
+      "optimize": "Speicher jetzt optimieren",
+      "checkIntegrity": "Datenbank prüfen",
+      "maintenanceDone_one": "Fertig. {{count}} alter Rohmesswert wurde entfernt.",
+      "maintenanceDone_other": "Fertig. {{count}} alte Rohmesswerte wurden entfernt.",
+      "integrityOk": "Die Datenbank ist in Ordnung.",
+      "integrityBad": "Die Datenbankprüfung hat ein Problem gefunden",
+      "deleteTitle": "Alten Verlauf löschen",
+      "deleteHelp": "Entfernt dauerhaft beendete Überwachungssitzungen und die darin aufgezeichneten Spielsitzungen, die vor dem gewählten Alter endeten. Die laufende Sitzung, Ihre Strompreise, Ihre Einstellungen und Ihre Spieleliste bleiben unberührt, und die Datenbankdatei wird nicht gelöscht.",
+      "deleteOlderThan": "Älter als",
+      "deleteMin": "Mindestens 30 Tage.",
+      "deletePreview": "Anzeigen, was gelöscht würde",
+      "deleteNothing": "Nichts ist so alt. Es würde nichts gelöscht.",
+      "deleteScope_one": "{{count}} beendete Überwachungssitzung würde gelöscht",
+      "deleteScope_other": "{{count}} beendete Überwachungssitzungen würden gelöscht",
+      "deleteButton": "Löschen...",
+      "deleteDone_one": "{{count}} Überwachungssitzung und ihre aufgezeichneten Daten gelöscht.",
+      "deleteDone_other": "{{count}} Überwachungssitzungen und ihre aufgezeichneten Daten gelöscht.",
+      "confirmTitle": "Diesen Verlauf endgültig löschen?",
+      "confirmBody_one": "{{count}} beendete Überwachungssitzung wird gelöscht, mit:",
+      "confirmBody_other": "{{count}} beendete Überwachungssitzungen werden gelöscht, mit:",
+      "confirmDelete": "Endgültig löschen",
+      "confirmReports": "Berichte für diese Tage und Monate enthalten diese Energie nicht mehr, und die zugehörigen Kosten verschwinden.",
+      "confirmKept": "Erhalten bleiben: die laufende Sitzung, neuerer Verlauf, Strompreise, Schätzeinstellungen, die Spieleliste und die Datenbankdatei.",
+      "confirmIrreversible": "Dies lässt sich nicht rückgängig machen."
+    },
+    "language": {
+      "description": "Die Sprache der App und des Infobereich-Menüs.",
+      "label": "Sprache",
+      "note": "Datum und Zahlen folgen den Konventionen der Sprache. Einheiten wie W, kWh und EUR sowie CPU und GPU werden immer gleich geschrieben."
+    },
+    "application": {
+      "description": "Wie WattScope auf diesem Computer läuft.",
+      "background": "Hintergrundüberwachung",
+      "backgroundHelp": "Beim Schließen dieses Fensters läuft WattScope im Infobereich weiter und die Überwachung geht weiter. WattScope läuft nur, solange Sie es gestartet haben; es startet nicht mit Windows.",
       "exit": "WattScope beenden",
-      "exitHelp": "Beendet die Überwachung, speichert die Sitzung und schließt WattScope vollständig."
+      "exitHelp": "Beendet die Überwachung, speichert die Sitzung und schließt WattScope vollständig.",
+      "exitTitle": "WattScope beenden?",
+      "exitBody": "Die Überwachung wird beendet und die aktuelle Sitzung gespeichert. WattScope zeichnet nichts mehr auf, bis Sie es erneut starten.",
+      "administrator": "Administrator",
+      "administratorHelp": "Auf manchen PCs lässt sich der CPU-Sensor nur lesen, wenn WattScope als Administrator läuft. WattScope erhöht seine Rechte nie selbst: Für vollständige CPU-Überwachung schließen Sie es und starten es mit Als Administrator ausführen.",
+      "elevated": "Läuft als Administrator",
+      "notElevated": "Läuft nicht als Administrator",
+      "about": "Info und Diagnose"
     },
-    "administrator": {
-      "title": "Administrator",
-      "description": "Auf manchen Rechnern lässt sich die CPU-Leistung nur lesen, wenn WattScope als Administrator läuft. WattScope erhöht seine Rechte nie selbst: Für vollständige CPU-Überwachung schließen Sie es und starten es manuell mit Als Administrator ausführen.",
-      "running": "Läuft als Administrator",
-      "notRunning": "Läuft nicht als Administrator"
-    },
-    "intervalHelp": "Eine Änderung des Intervalls setzt dieselbe Sitzung fort; eine kurze Lücke wird erfasst und es wird keine Energie dafür erfunden."
+    "diagnostics": {
+      "show": "Version und Diagnose anzeigen",
+      "failed": "Die Diagnose ist derzeit nicht verfügbar",
+      "version": "WattScope-Version",
+      "schema": "Datenbankschema",
+      "dbSize": "Datenbankgröße",
+      "monitoring": "Überwachung",
+      "backend": "Hintergrund-Monitor",
+      "runtime": ".NET-Laufzeit",
+      "os": "Windows",
+      "webview": "WebView2",
+      "location": "Speicherort der Datenbank",
+      "sensors": "Ausgewählte Energiesensoren",
+      "noSensors": "Keine ausgewählt",
+      "providers": "Sensoranbieter",
+      "available": "verfügbar",
+      "unavailable": "nicht verfügbar",
+      "needsAdmin": "benötigt Administrator",
+      "copy": "Diagnose kopieren",
+      "copied": "Kopiert",
+      "copyFailed": "Kopieren in die Zwischenablage nicht möglich",
+      "privacy": "Der kopierte Text enthält nur Versionen, Zustände und die beiden ausgewählten Sensoren: keinen Computer- oder Benutzernamen und keine Datenbankinhalte. Der Profilordner im Pfad wird durch eine Variable ersetzt."
+    }
   },
-  "common": {
-    "loading": "Wird geladen...",
-    "retry": "Erneut versuchen",
-    "watts": "W",
-    "kwh": "kWh",
-    "seconds": "s",
-    "close": "Schließen",
-    "na": "n. v."
+  "firstRun": {
+    "title": "Willkommen bei WattScope",
+    "intro": "Ein kurzer Überblick, was WattScope tut und was es nicht weiß.",
+    "points": {
+      "local": {
+        "title": "Es bleibt auf Ihrem PC.",
+        "body": "WattScope überwacht die Leistungsaufnahme der Hardware Ihres Computers lokal. Es gibt kein Konto, keine Cloud und keinen Upload."
+      },
+      "measured": {
+        "title": "Manche Werte sind gemessen.",
+        "body": "CPU- und GPU-Leistung stammen direkt aus den Sensoren Ihrer Hardware."
+      },
+      "estimated": {
+        "title": "Der gesamte PC wird geschätzt.",
+        "body": "Ohne Smart-Plug wird die Systemleistung aus diesen Sensoren plus zwei einstellbaren Annahmen berechnet. Das ist eine Schätzung, keine Messung an der Steckdose."
+      },
+      "cpu": {
+        "title": "Die CPU-Leistung braucht eventuell eine Berechtigung.",
+        "body": "Auf manchen PCs lässt sie sich nur lesen, wenn WattScope als Administrator läuft. Fehlt sie, sagt WattScope das, zeigt eine untere Grenze und rät nie."
+      },
+      "price": {
+        "title": "Für Kosten Ihren Strompreis eintragen.",
+        "body": "Ohne Preis sehen Sie weiterhin die Energie, nur keine Kosten."
+      }
+    },
+    "footer": "Das alles können Sie später in den Einstellungen ändern.",
+    "setPrice": "Meinen Strompreis eintragen",
+    "start": "Los geht's"
   }
 }

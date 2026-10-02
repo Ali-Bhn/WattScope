@@ -18,7 +18,7 @@ namespace WattScope.Probe.Serve;
 /// past its boundary: malformed or invalid input becomes a structured error
 /// response, not a crash of the monitoring process.
 /// </summary>
-public sealed class ServeRequestProcessor(SqliteEnergyStore queryStore, MonitoringController controller, Action requestShutdown, ILogger logger, GamingService? gaming = null)
+public sealed class ServeRequestProcessor(SqliteEnergyStore queryStore, MonitoringController controller, Action requestShutdown, ILogger logger, GamingService? gaming = null, DiagnosticsInfo? diagnostics = null)
 {
     /// <summary>The longest request line accepted; anything larger is rejected before parsing.</summary>
     public const int MaxLineLength = 16 * 1024;
@@ -83,7 +83,25 @@ public sealed class ServeRequestProcessor(SqliteEnergyStore queryStore, Monitori
             case "get_prices":
                 return queryStore.GetPriceSchedule().Entries;
             case "set_price":
-                return SetPrice(request);
+                return AppHandlers.SetPrice(queryStore, request);
+            case "get_price_info":
+                return AppHandlers.PriceInfo(queryStore);
+            case "preview_price":
+                return AppHandlers.PreviewPrice(queryStore, request);
+            case "get_app_state":
+                return AppHandlers.AppState(queryStore, diagnostics);
+            case "complete_first_run":
+                return AppHandlers.CompleteFirstRun(queryStore);
+            case "get_diagnostics":
+                return AppHandlers.Diagnostics(queryStore, controller, diagnostics);
+            case "check_integrity":
+                return AppHandlers.CheckIntegrity(queryStore);
+            case "run_maintenance":
+                return AppHandlers.Maintenance(queryStore);
+            case "preview_history_deletion":
+                return AppHandlers.PreviewHistoryDeletion(queryStore, request);
+            case "delete_history":
+                return AppHandlers.DeleteHistory(queryStore, request);
             case "get_estimation":
                 return queryStore.GetEstimationSettings();
             case "set_estimation":
@@ -171,20 +189,6 @@ public sealed class ServeRequestProcessor(SqliteEnergyStore queryStore, Monitori
         if (session is null)
             throw new ArgumentException(request.SessionId is { } missing ? $"Session {missing} does not exist." : "No sessions recorded yet.");
         return new { report = DatabaseCommands.BuildSessionReport(queryStore, session, prices), session };
-    }
-
-    private ElectricityPrice SetPrice(ServeRequest request)
-    {
-        if (request.PricePerKwh is not { } pricePerKwh)
-            throw new ArgumentException("pricePerKwh is required.");
-        var entry = new ElectricityPrice
-        {
-            EffectiveFromUtc = request.EffectiveFrom ?? DateTimeOffset.UtcNow,
-            PricePerKwh = pricePerKwh,
-            Currency = request.Currency ?? ElectricityPriceSchedule.DefaultCurrency
-        };
-        queryStore.AddPrice(entry, DateTimeOffset.UtcNow);
-        return entry;
     }
 
     private EstimationSettings SetEstimation(ServeRequest request)

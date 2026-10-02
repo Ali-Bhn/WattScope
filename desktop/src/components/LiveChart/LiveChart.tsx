@@ -1,19 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import type { TickMessage } from "@/lib/types";
-
-// Bounded history: old points are dropped as new ones arrive, so memory and
-// draw cost never grow with session length (Part E/J). At a 1 s interval
-// this is 5 minutes of history; it simply holds less wall-clock time at a
-// shorter configured interval.
-const HISTORY_CAPACITY = 300;
-
-interface Point {
-  cpu: number | null;
-  gpu: number | null;
-  total: number | null;
-}
+import { monitoringStore } from "@/hooks/useSidecar";
+import { formatNumber } from "@/lib/format";
+import { HISTORY_CAPACITY, type HistoryPoint } from "@/lib/store";
 
 interface SeriesVisibility {
   cpu: boolean;
@@ -21,42 +10,37 @@ interface SeriesVisibility {
   total: boolean;
 }
 
-const COLORS: Record<keyof SeriesVisibility, string> = {
-  cpu: "#3ecf8e",
-  gpu: "#4c9aff",
-  total: "#a78bfa",
+// Colour is never the only cue: each series also has its own line pattern (and the legend shows it).
+const SERIES: Record<keyof SeriesVisibility, { color: string; dash: number[]; width: number }> = {
+  total: { color: "#a78bfa", dash: [], width: 2 },
+  gpu: { color: "#4c9aff", dash: [6, 3], width: 1.5 },
+  cpu: { color: "#3ecf8e", dash: [2, 3], width: 1.5 },
 };
 
 /**
- * Live power chart. Intentionally does NOT put tick data into React state:
- * it subscribes to the "sidecar-tick" event itself and draws straight to a
- * canvas on a throttled requestAnimationFrame loop, so a new sample never
- * triggers a React re-render of this component (or anything else) --
- * exactly what Part E asks for ("efficient updates", "no unnecessary
- * rerendering"). Only toggling a series' visibility is real React state,
- * since that's a rare, deliberate user action.
+ * Live power chart. It deliberately keeps tick data out of React state: it
+ * subscribes to the store's tick callback and draws straight to a canvas on a
+ * requestAnimationFrame that is requested only when something changed, so a new
+ * sample never re-renders React. The bounded history itself lives in the store
+ * (not here), so it survives navigating to another page and back, and is
+ * capped at HISTORY_CAPACITY points. A hidden window draws nothing.
  */
 export function LiveChart() {
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const bufferRef = useRef<Point[]>([]);
   const dirtyRef = useRef(true);
   const scheduleRef = useRef<(() => void) | null>(null);
   const [visible, setVisible] = useState<SeriesVisibility>({ cpu: true, gpu: true, total: true });
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
-  const [hasData, setHasData] = useState(false);
+  const [hasData, setHasData] = useState(() => monitoringStore.getHistory().length > 0);
+  const hasDataRef = useRef(hasData);
 
   useEffect(() => {
     let raf = 0;
     let pending = false;
-    let unlisten: (() => void) | undefined;
-    let unlistenVisibility: (() => void) | undefined;
     let cancelled = false;
 
-    // Frames are requested only when there is something new to paint -- an
-    // always-re-arming animation loop costs CPU even when nothing changes,
-    // and a window hidden to the tray must cost (almost) nothing.
     const schedule = () => {
       if (pending || cancelled) return;
       pending = true;
@@ -66,9 +50,8 @@ export function LiveChart() {
 
     function draw() {
       pending = false;
-      // Nothing to paint for a hidden window (the host also stops delivering
-      // ticks while hidden); stay dirty so the first visible frame repaints.
-      if (document.hidden || !dirtyRef.current) return;
+      // Nothing to paint for a hidden window; stay dirty so the first visible frame repaints.
+      if (document.hidden || !monitoringStore.getState().uiVisible || !dirtyRef.current) return;
       dirtyRef.current = false;
 
       const canvas = canvasRef.current;
@@ -88,7 +71,7 @@ export function LiveChart() {
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, width, height);
 
-      const points = bufferRef.current;
+      const points: readonly HistoryPoint[] = monitoringStore.getHistory();
       if (points.length < 2) {
         ctx.restore();
         return;
@@ -101,135 +84,144 @@ export function LiveChart() {
         if (v.gpu && p.gpu !== null) maxValue = Math.max(maxValue, p.gpu);
         if (v.total && p.total !== null) maxValue = Math.max(maxValue, p.total);
       }
+      maxValue = Math.ceil(maxValue / 10) * 10; // a stable, round top of the scale
 
-      const padding = 8;
-      const plotW = width - padding * 2;
-      const plotH = height - padding * 2;
+      const padX = 8;
+      const padTop = 16;
+      const padBottom = 8;
+      const plotW = width - padX * 2;
+      const plotH = height - padTop - padBottom;
       const n = points.length;
+      // The line fills the width once the buffer is full; before that it grows from the start edge.
+      const stepX = plotW / (HISTORY_CAPACITY - 1);
 
       ctx.strokeStyle = "rgba(255,255,255,0.07)";
       ctx.lineWidth = 1;
-      for (let i = 1; i < 4; i++) {
-        const y = padding + (plotH / 4) * i;
+      ctx.setLineDash([]);
+      for (let i = 0; i <= 4; i++) {
+        const y = padTop + (plotH / 4) * i;
         ctx.beginPath();
-        ctx.moveTo(padding, y);
-        ctx.lineTo(width - padding, y);
+        ctx.moveTo(padX, y);
+        ctx.lineTo(width - padX, y);
         ctx.stroke();
       }
 
-      const drawSeries = (pick: (p: Point) => number | null, color: string) => {
+      ctx.fillStyle = "#8b94a3";
+      ctx.font = "11px Segoe UI, sans-serif";
+      ctx.textBaseline = "top";
+      ctx.fillText(`${formatNumber(maxValue, 0)} W`, padX, 2);
+
+      // Time always runs left to right (older -> newer), also in right-to-left layouts: a chart is a technical figure, like a number.
+      const xOf = (i: number) => padX + i * stepX;
+      const drawSeries = (pick: (p: HistoryPoint) => number | null, style: (typeof SERIES)[keyof SeriesVisibility]) => {
         ctx.beginPath();
         let started = false;
         for (let i = 0; i < n; i++) {
           const value = pick(points[i]);
-          const x = padding + (n === 1 ? 0 : (i / (n - 1)) * plotW);
           if (value === null) {
-            started = false;
+            started = false; // a missing reading or a deliberate break: the line stops, it is never drawn as zero
             continue;
           }
-          const y = padding + plotH - (value / maxValue) * plotH;
+          const y = padTop + plotH - (value / maxValue) * plotH;
           if (!started) {
-            ctx.moveTo(x, y);
+            ctx.moveTo(xOf(i), y);
             started = true;
           } else {
-            ctx.lineTo(x, y);
+            ctx.lineTo(xOf(i), y);
           }
         }
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = style.color;
+        ctx.lineWidth = style.width;
         ctx.lineJoin = "round";
+        ctx.setLineDash(style.dash);
         ctx.stroke();
       };
 
-      if (v.total) drawSeries((p) => p.total, COLORS.total);
-      if (v.gpu) drawSeries((p) => p.gpu, COLORS.gpu);
-      if (v.cpu) drawSeries((p) => p.cpu, COLORS.cpu);
+      if (v.total) drawSeries((p) => p.total, SERIES.total);
+      if (v.gpu) drawSeries((p) => p.gpu, SERIES.gpu);
+      if (v.cpu) drawSeries((p) => p.cpu, SERIES.cpu);
 
       ctx.restore();
     }
 
-    schedule();
-
-    listen<boolean>("ui-visibility", (event) => {
-      if (event.payload) {
-        dirtyRef.current = true;
-        schedule();
-      }
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlistenVisibility = fn;
-    });
-
-    listen<TickMessage>("sidecar-tick", (event) => {
-      if (cancelled) return;
-      const tick = event.payload;
-      const buffer = bufferRef.current;
-      buffer.push({ cpu: tick.cpuWatts, gpu: tick.gpuWatts, total: tick.estimatedTotalWatts });
-      if (buffer.length > HISTORY_CAPACITY) buffer.shift();
+    const markDirty = () => {
       dirtyRef.current = true;
-      setHasData(true);
       schedule();
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
+    };
+
+    markDirty();
+
+    const offTicks = monitoringStore.subscribeTicks(() => {
+      if (!hasDataRef.current) {
+        hasDataRef.current = true;
+        setHasData(true);
+      }
+      markDirty();
     });
+
+    // Repaint when the window is shown again, and when the history is reset (a new run).
+    let wasVisible = monitoringStore.getState().uiVisible;
+    const offState = monitoringStore.subscribe(() => {
+      const nowVisible = monitoringStore.getState().uiVisible;
+      if (nowVisible && !wasVisible) markDirty();
+      wasVisible = nowVisible;
+      const has = monitoringStore.getHistory().length > 0;
+      if (has !== hasDataRef.current) {
+        hasDataRef.current = has;
+        setHasData(has);
+        markDirty();
+      }
+    });
+
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(markDirty);
+    if (canvasRef.current) observer?.observe(canvasRef.current);
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       scheduleRef.current = null;
-      unlisten?.();
-      unlistenVisibility?.();
+      offTicks();
+      offState();
+      observer?.disconnect();
     };
   }, []);
 
-  // Redraw once immediately after a visibility toggle, without waiting for the next tick.
+  // Redraw once immediately after a series toggle, without waiting for the next tick.
   useEffect(() => {
     dirtyRef.current = true;
     scheduleRef.current?.();
   }, [visible]);
 
   return (
-    <div className="card flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">{t("chart.title")}</h2>
-        <div className="flex gap-4 text-xs">
+    <section className="card flex flex-col gap-3" aria-labelledby="live-chart-title">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="live-chart-title" className="text-sm font-semibold">
+          {t("chart.title")}
+        </h2>
+        <div className="flex flex-wrap gap-4 text-xs">
           <SeriesToggle id="cpu" label={t("chart.cpu")} checked={visible.cpu} onChange={(c) => setVisible((s) => ({ ...s, cpu: c }))} />
           <SeriesToggle id="gpu" label={t("chart.gpu")} checked={visible.gpu} onChange={(c) => setVisible((s) => ({ ...s, gpu: c }))} />
           <SeriesToggle id="total" label={t("chart.total")} checked={visible.total} onChange={(c) => setVisible((s) => ({ ...s, total: c }))} />
         </div>
       </div>
-      <div className="relative h-48 w-full">
-        <canvas ref={canvasRef} className="h-full w-full" />
-        {!hasData && (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-ink-muted">{t("chart.noData")}</div>
-        )}
+      <div className="relative h-48 w-full min-w-0">
+        <canvas ref={canvasRef} className="h-full w-full" role="img" aria-label={t("chart.ariaLabel")} />
+        {!hasData && <div className="absolute inset-0 flex items-center justify-center text-sm text-ink-muted">{t("chart.noData")}</div>}
       </div>
-    </div>
+      <p className="text-xs text-ink-muted">{t("chart.note")}</p>
+    </section>
   );
 }
 
-function SeriesToggle({
-  id,
-  label,
-  checked,
-  onChange,
-}: {
-  id: keyof SeriesVisibility;
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  const color = COLORS[id];
+function SeriesToggle({ id, label, checked, onChange }: { id: keyof SeriesVisibility; label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  const style = SERIES[id];
   return (
-    <label className="flex cursor-pointer items-center gap-1.5 select-none">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        style={{ accentColor: color }}
-      />
-      <span style={{ color }}>{label}</span>
+    <label className="flex cursor-pointer select-none items-center gap-1.5">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: style.color }} />
+      <svg width="22" height="8" aria-hidden="true">
+        <line x1="0" y1="4" x2="22" y2="4" stroke={style.color} strokeWidth={style.width} strokeDasharray={style.dash.join(" ")} />
+      </svg>
+      <span className="text-ink-secondary">{label}</span>
     </label>
   );
 }

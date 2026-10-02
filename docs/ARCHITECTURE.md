@@ -29,6 +29,10 @@
   page. Entirely external and passive -- no injection, hooks or memory access.
   See `docs/GAMING.md` and "Gaming (Milestone 005)" below.
 
+- **Milestone 006:** application completion -- no new engine capability and no
+  schema change; the desktop app became coherent and honest. See "Application
+  layer (Milestone 006)" below.
+
 Nothing here knows about FPS, frame times or anti-cheat integration; those are
 not part of this project.
 
@@ -320,6 +324,44 @@ an interval change keeps an open gaming session (the same monitoring session
 continues with a recorded `Paused` gap). After a sidecar crash the orphaned
 gaming session is recovered as `Interrupted` together with its monitoring
 session, and a game that is still running is detected afresh.
+
+## Application layer (Milestone 006)
+
+```
+host (Rust)  --events-->  window (React)
+  sidecar-tick / sidecar-status / backend-state / ui-visibility / navigate
+  commands: sidecar_request, get_backend_state, retry_sidecar, get_host_info, ...
+window: ONE store (lib/store.ts) = the only listener of those events
+  state slices (view, status, snapshot, backend, uiVisible) via useSyncExternalStore
+  bounded chart history (300 points), tick callbacks for the canvas (no React state)
+  pages read slices: Dashboard (tick), Gaming live card (tick), Settings (snapshot only)
+  usePolling / useQuery: requests with loading/ready/error, polling only while visible
+```
+
+- **Sidecar process state is separate from monitoring state.** The host
+  tracks `starting -> running`, `restarting` (bounded automatic restart
+  pending) and `failed` (gave up: lock held, database error, too many restarts,
+  spawn failure) and emits `backend-state`; the UI localizes the *reason code*
+  and offers **Retry** (`retry_sidecar`), which only acts in `failed` with no
+  sidecar alive and goes through the same guarded spawn, so it cannot create a
+  second sidecar or session. The pending automatic restart also re-checks
+  `alive` before spawning.
+- **Exit codes** of `--serve`: 3 = another recorder owns the database, 4 = the
+  database cannot be opened/migrated; neither is retried automatically.
+- **Money and estimates stay in the backend.** The UI sends prices as exact
+  decimal text and only *formats* numbers it receives. The server enforces what
+  the UI previews: a price that reaches into already-recorded energy is refused
+  unless `confirmHistorical` is sent, and history deletion needs the exact
+  session count (`confirmSessions`) the user was shown and an age >= 30 days.
+- **Honesty rules live in pure, tested modules** (`lib/reports.ts`,
+  `lib/monitoring.ts`, `lib/gaming.ts`): Complete and Partial are never merged;
+  a missing value is `--`, not zero; cost needs Complete + priced.
+- **Persistence of UI state**: first-run completion is in the database
+  (`app_setting`), not browser storage; the language is the only value kept in
+  `localStorage` (and mirrored to the host for the tray).
+- **Dev-only mock** (`src/dev/mock.ts`, `--mode mock`) replaces the host and
+  sidecar with synthetic data so the UI can be rendered/screenshotted in a
+  browser; it is compiled out of normal builds.
 
 ## Provider notes
 

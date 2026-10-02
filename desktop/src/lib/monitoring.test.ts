@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyStatus, costVisibility, deriveQuality, type MonitoringView } from "./monitoring";
+import { applyBackend, applyStatus, costVisibility, deriveQuality, isRecording, sessionEnergy, type MonitoringView } from "./monitoring";
 import type { StatusMessage, TickMessage } from "./types";
 
 const baseTick: TickMessage = {
@@ -17,6 +17,7 @@ const baseTick: TickMessage = {
   sessionCompleteness: "complete",
   sessionSeconds: 10,
   sessionKwh: 0.01,
+  sessionPartialKwh: 0,
   sessionCostApprox: 0.003,
   currency: "EUR",
   elevated: true,
@@ -84,7 +85,62 @@ describe("lifecycle events", () => {
   });
 });
 
+describe("the sidecar process state (restarting / failed) is folded into the view", () => {
+  it.each(["restarting", "failed"] as const)("%s means not recording and the monitor is down", (state) => {
+    const next = applyBackend({ ...running, lastTick: baseTick }, { state });
+    expect(next).toEqual({ recording: false, monitorDown: true, lastTick: null });
+  });
+
+  it("a running process clears 'down' but never invents a recording", () => {
+    const next = applyBackend({ recording: false, monitorDown: true, lastTick: null }, { state: "running" });
+    expect(next).toEqual({ recording: false, monitorDown: false, lastTick: null });
+  });
+
+  it("starting and running change nothing else", () => {
+    const view = { ...running, lastTick: baseTick };
+    expect(applyBackend(view, { state: "starting" })).toBe(view);
+    expect(applyBackend(view, { state: "running" })).toBe(view);
+  });
+});
+
+describe("session energy shown on the dashboard", () => {
+  it("is 'none' before any sample, never zero", () => {
+    expect(sessionEnergy(null)).toEqual({ kind: "none" });
+    expect(sessionEnergy({ ...baseTick, sessionCompleteness: "none", sessionKwh: 0, sessionPartialKwh: 0 })).toEqual({ kind: "none" });
+  });
+
+  it("is the complete energy for a complete session", () => {
+    expect(sessionEnergy(baseTick)).toEqual({ kind: "complete", kwh: 0.01 });
+  });
+
+  it("is a lower bound -- complete plus partial, labelled as such -- when any part was partial", () => {
+    expect(sessionEnergy({ ...baseTick, sessionCompleteness: "partial", sessionKwh: 0.004, sessionPartialKwh: 0.006 })).toEqual({ kind: "lowerBound", kwh: 0.01 });
+    expect(sessionEnergy({ ...partialTick, sessionKwh: 0, sessionPartialKwh: 0.02 })).toEqual({ kind: "lowerBound", kwh: 0.02 });
+  });
+
+  it("tolerates a tick from an older sidecar without the partial field", () => {
+    const old = { ...partialTick, sessionKwh: 0, sessionPartialKwh: undefined } as unknown as TickMessage;
+    expect(sessionEnergy(old)).toEqual({ kind: "lowerBound", kwh: 0 });
+  });
+});
+
+describe("recording state", () => {
+  it("is true for every state that is recording (including before the first sample), false otherwise", () => {
+    expect(isRecording("starting")).toBe(true);
+    expect(isRecording("complete")).toBe(true);
+    expect(isRecording("partial")).toBe(true);
+    expect(isRecording("sensorUnavailable")).toBe(true);
+    expect(isRecording("stopped")).toBe(false);
+    expect(isRecording("unavailable")).toBe(false);
+  });
+});
+
 describe("cost visibility", () => {
+  it("distinguishes 'no electricity price' from 'the estimate is incomplete'", () => {
+    expect(costVisibility({ ...baseTick, sessionCompleteness: "complete", sessionCostApprox: null })).toBe("noPrice");
+    expect(costVisibility({ ...partialTick, sessionCostApprox: null })).toBe("withheldPartial");
+  });
+
   it("shows a cost for a complete session", () => {
     expect(costVisibility(baseTick)).toBe("complete");
   });

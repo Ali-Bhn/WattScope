@@ -1,9 +1,9 @@
-<#
+﻿<#
 .SYNOPSIS
   Measures the packaged app's resource use with the dashboard visible and
   with it hidden in the tray: CPU, memory and process count per process
   group (host, WebView2 tree, sidecar). Launches the real release exe, so it
-  records a real session in the default database.
+  records a session in a SCRATCH database (WATTSCOPE_DB), never your real history.
 
   CPU is the delta of each process's TotalProcessorTime over wall-clock time,
   reported as % of ONE logical core (and of the whole machine). Short runs on
@@ -18,6 +18,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "_scratch-db.ps1")
+Assert-NoWattScopeRunning
+$ScratchDb = Use-ScratchDatabase "background"
 $AppExe = (Resolve-Path $AppExe).Path
 $cores = [Environment]::ProcessorCount
 
@@ -111,3 +114,4 @@ $hidden = Measure-Phase "hidden in tray" $app.Id
 Stop-Process -Id $app.Id -Force
 Start-Sleep -Seconds 4
 foreach ($p in Get-Process -Name "wattscope-probe" -ErrorAction SilentlyContinue) { Stop-Process -Id $p.Id -Force }
+

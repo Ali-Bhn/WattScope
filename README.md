@@ -7,8 +7,12 @@ estimating electricity costs, and analyzing gaming sessions.
 validation), Milestone 002 (energy calculation, electricity cost, SQLite
 persistence), and Milestone 003 (sub-bucket electricity pricing and the
 first desktop application, `desktop/`), and Milestone 004 (tray, single
-instance, monitoring/sidecar lifecycle) -- see `docs/PROJECT_STATE.md`.
-Gaming analytics is not implemented yet.
+instance, monitoring/sidecar lifecycle), Milestone 005 (gaming session
+detection and energy analytics) and Milestone 006 (application completion:
+reports, settings, price history, first run, diagnostics, data management) --
+see `docs/PROJECT_STATE.md`. The application is feature complete; real-world
+validation (real game, installers, Administrator, shutdown/logoff) is
+deliberately deferred and **unverified** -- `docs/PRE_RELEASE_CHECKLIST.md`.
 
 ## Projects
 
@@ -113,5 +117,9 @@ intentionally deferred (`docs/ARCHITECTURE.md`, "Privilege model").
 
 Lifecycle and performance checks against the real packaged app:
 `desktop/scripts/validate-lifecycle.ps1` and `desktop/scripts/measure-background.ps1`
-(both launch the real app and record real sessions). Procedures that need a
+(both launch the real app but record into a **scratch** database via
+`WATTSCOPE_DB` and refuse to run while WattScope is already running; never
+point validation at `%LOCALAPPDATA%\WattScope\wattscope.db`). To look at the
+UI without a backend (screenshots, layout checks): `npx vite build --mode mock`
+renders it on synthetic data in a plain browser (`src/dev/mock.ts`). Procedures that need a
 person (sleep/resume, the tray menu, logoff) are in `docs/MANUAL_VALIDATION.md`.

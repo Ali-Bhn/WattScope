@@ -1,102 +1,84 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useMonitoring, useSidecarRequest } from "@/hooks/useSidecar";
+import { useQuery } from "@/hooks/useQuery";
+import { sidecarRequest, useGamingSessionId, useIsRecording, useMonitoringActions, useTick, useUiVisible } from "@/hooks/useSidecar";
 import { Num } from "@/components/Num";
-import { StatCard } from "@/components/Dashboard/StatCard";
-import { formatDuration, formatKwh, formatLocalDateTime, formatMoney, formatWatts } from "@/lib/format";
+import { Badge, CompletenessBadge } from "@/components/ui/Badge";
+import { EmptyState, ErrorPanel, Loading, PageHeader } from "@/components/ui/States";
+import { Notice } from "@/components/ui/Notice";
+import { StatCard } from "@/components/ui/StatCard";
+import { formatDuration, formatEnergy, formatKwh, formatLocalDateTime, formatMoney, formatWatts } from "@/lib/format";
 import { COST_STATUS_KEYS, costDisplay, endLabelKey, isRunningSession, SOURCE_KEYS, unmonitoredSeconds, type CostDisplay } from "@/lib/gaming";
-import type {
-  GameAggregate,
-  GameMapping,
-  GameMappingKind,
-  GamingLiveState,
-  GamingSessionDetail,
-  GamingSessionSummary,
-  GamingStateResponse,
-  RunningExecutable,
-} from "@/lib/types";
+import type { GameAggregate, GameMapping, GameMappingKind, GamingLiveState, GamingSessionDetail, GamingSessionSummary, GamingStateResponse, RunningExecutable, TickMessage } from "@/lib/types";
+
+/** The newest N sessions are listed; older ones still count in the per-game totals below. */
+const HISTORY_LIMIT = 100;
 
 /** Game names can be in any script (including Persian): isolate them from the surrounding text direction. */
 function GameName({ children }: { children: ReactNode }) {
   return <bdi className="font-medium">{children}</bdi>;
 }
 
-function Cost({ display, t }: { display: CostDisplay; t: (key: string) => string }) {
+function Cost({ display }: { display: CostDisplay }) {
+  const { t } = useTranslation();
   if (display.kind === "amount") return <Num>{formatMoney(display.amount, display.currency, 2)}</Num>;
   return <span className="text-ink-muted">{t("common.na")}</span>;
-}
-
-function ErrorBox({ message }: { message: string }) {
-  return <div className="card border-red-500/30 bg-red-500/10 text-sm text-red-300">{message}</div>;
 }
 
 /**
  * The Gaming area. Everything here is a *view*: detection, the session state machine and the energy
  * attribution all live in the sidecar (docs/GAMING.md). The live card follows the same tick stream the
- * dashboard uses; history, per-game totals and mappings are plain requests.
+ * Dashboard uses (so there is no polling for it at all); history, per-game totals and mappings are plain
+ * requests, reloaded when a gaming session starts or ends.
  */
 export function Gaming() {
   const { t } = useTranslation();
-  const request = useSidecarRequest();
-  const { tick } = useMonitoring();
-  const [polled, setPolled] = useState<GamingStateResponse | null>(null);
+  const liveSessionId = useGamingSessionId();
+  const detection = useQuery<GamingStateResponse>({ cmd: "get_gaming_state" });
+
   const [sessions, setSessions] = useState<GamingSessionSummary[] | null>(null);
   const [aggregates, setAggregates] = useState<GameAggregate[] | null>(null);
-  const [mappings, setMappings] = useState<GameMapping[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  // The tick stream is authoritative while monitoring runs; the polled state covers a quiet moment (and a candidate).
-  const live: GamingLiveState | null = tick ? tick.gaming : (polled?.live ?? null);
-  const liveSessionId = live?.sessionId ?? null;
+  const [mappings, setMappings] = useState<GameMapping[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   const loadHistory = useCallback(async () => {
     try {
       const [s, a, m] = await Promise.all([
-        request<GamingSessionSummary[]>({ cmd: "get_gaming_sessions", limit: 100 }),
-        request<GameAggregate[]>({ cmd: "get_game_aggregates" }),
-        request<GameMapping[]>({ cmd: "get_game_mappings" }),
+        sidecarRequest<GamingSessionSummary[]>({ cmd: "get_gaming_sessions", limit: HISTORY_LIMIT }),
+        sidecarRequest<GameAggregate[]>({ cmd: "get_game_aggregates" }),
+        sidecarRequest<GameMapping[]>({ cmd: "get_game_mappings" }),
       ]);
       setSessions(s);
       setAggregates(a);
       setMappings(m);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(e);
     }
-  }, [request]);
+  }, []);
 
-  // Slow poll (5 s) only for what ticks do not carry; history reloads when a session starts or ends.
+  // Once on open, and again whenever a gaming session starts or ends (the live id changes).
+  const previous = useRef<number | null | undefined>(undefined);
   useEffect(() => {
-    let cancelled = false;
-    const poll = () =>
-      request<GamingStateResponse>({ cmd: "get_gaming_state" })
-        .then((s) => !cancelled && setPolled(s))
-        .catch(() => undefined);
-    void poll();
-    const id = setInterval(poll, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [request]);
-
-  const previousSession = useRef<number | null>(null);
-  useEffect(() => {
-    if (previousSession.current !== liveSessionId) {
-      previousSession.current = liveSessionId;
+    if (previous.current !== liveSessionId) {
+      previous.current = liveSessionId;
       void loadHistory();
     }
   }, [liveSessionId, loadHistory]);
-  useEffect(() => {
-    void loadHistory();
-  }, [loadHistory]);
+
+  const detectionOff = detection.state.status === "ready" && !detection.state.data.available;
 
   return (
-    <div className="flex flex-col gap-5">
-      <h1 className="text-lg font-semibold">{t("gaming.title")}</h1>
-      {error && <ErrorBox message={error} />}
+    <div className="flex flex-col gap-6">
+      <PageHeader title={t("gaming.title")} subtitle={t("gaming.subtitle")} />
+      {error !== null && <ErrorPanel error={error} onRetry={() => void loadHistory()} />}
+      {detectionOff && (
+        <Notice tone="warn" title={t("gaming.detectionOff")}>
+          {t("gaming.detectionOffHelp")}
+        </Notice>
+      )}
 
-      <LiveSection live={live} tick={tick} monitoring={polled?.monitoring ?? !!tick} onChanged={loadHistory} />
+      <LiveSection onChanged={loadHistory} />
       <HistorySection sessions={sessions} onChanged={loadHistory} />
       <AggregatesSection aggregates={aggregates} />
       <GamesSection mappings={mappings} onChanged={loadHistory} />
@@ -106,30 +88,31 @@ export function Gaming() {
 
 // ---------------------------------------------------------------- live
 
-function LiveSection({
-  live,
-  tick,
-  monitoring,
-  onChanged,
-}: {
-  live: GamingLiveState | null;
-  tick: ReturnType<typeof useMonitoring>["tick"];
-  monitoring: boolean;
-  onChanged: () => void;
-}) {
+function LiveSection({ onChanged }: { onChanged: () => void }) {
   const { t } = useTranslation();
+  const tick = useTick();
+  const monitoring = useIsRecording();
+  const { start } = useMonitoringActions();
+  const live: GamingLiveState | null = tick?.gaming ?? null;
 
   if (!live || !isRunningSession(live)) {
     return (
       <div className="flex flex-col gap-3">
-        <div className="card flex flex-col gap-1">
-          <span className="text-base font-semibold">{t("gaming.noGame")}</span>
+        <div className="card flex flex-col items-start gap-2">
+          <h2 className="text-base font-semibold">{t("gaming.noGame")}</h2>
           {live?.state === "candidate" ? (
-            <span className="text-sm text-ink-secondary">
+            <p className="text-sm text-ink-secondary">
               {t("gaming.detecting")} <GameName>{live.gameName}</GameName>
-            </span>
+            </p>
+          ) : monitoring ? (
+            <p className="max-w-prose text-sm text-ink-secondary">{t("gaming.noGameHelp")}</p>
           ) : (
-            <span className="text-sm text-ink-secondary">{monitoring ? t("gaming.noGameHelp") : t("gaming.needsMonitoring")}</span>
+            <>
+              <p className="max-w-prose text-sm text-ink-secondary">{t("gaming.needsMonitoring")}</p>
+              <button type="button" className="btn btn-primary" onClick={() => void start().catch(() => undefined)}>
+                {t("dashboard.startMonitoring")}
+              </button>
+            </>
           )}
         </div>
         <ManualControl live={live} monitoring={monitoring} onChanged={onChanged} />
@@ -137,87 +120,91 @@ function LiveSection({
     );
   }
 
+  return (
+    <div className="flex flex-col gap-3">
+      <LiveSession live={live} tick={tick} />
+      <ManualControl live={live} monitoring={monitoring} onChanged={onChanged} />
+    </div>
+  );
+}
+
+function LiveSession({ live, tick }: { live: GamingLiveState; tick: TickMessage | null }) {
+  const { t } = useTranslation();
   const cost = costDisplay(live.costStatus, live.cost, live.currency);
   const partial = live.completeness !== "complete";
-  const cpuMissing = !tick || tick.cpuState !== "valid";
+  const cpuOk = !!tick && tick.cpuState === "valid";
+  const gpuOk = !!tick && tick.gpuState === "valid";
   const unmonitored = unmonitoredSeconds(live.durationSeconds, live.monitoredSeconds);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="card flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-col">
-            <span className="label">{t("gaming.sessionTitle")}</span>
-            <span className="text-xl">
-              <GameName>{live.gameName}</GameName>
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-[11px] font-semibold">
-            <span className="rounded bg-surface-3 px-2 py-0.5 text-ink-secondary">{live.isManual ? t("gaming.manualBadge") : t("gaming.autoBadge")}</span>
-            <span className={`rounded px-2 py-0.5 ${live.state === "ending" ? "bg-amber-500/15 text-amber-400" : "bg-accent-green/15 text-accent-green"}`}>
-              {live.state === "ending" ? t("gaming.ending") : t("gaming.live")}
-            </span>
-          </div>
+    <section className="card flex flex-col gap-3" aria-labelledby="live-game">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-col">
+          <span className="label">{t("terms.gamingSession")}</span>
+          <h2 id="live-game" className="text-xl">
+            <GameName>{live.gameName}</GameName>
+          </h2>
         </div>
-
-        {partial && <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-300">{t("gaming.partialBanner")}</div>}
-
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-          <StatCard
-            label={t("gaming.duration")}
-            value={<Num>{formatDuration(live.durationSeconds)}</Num>}
-            sub={unmonitored > 1 ? `${t("gaming.monitored")}: ${formatDuration(live.monitoredSeconds)}` : undefined}
-          />
-          <StatCard
-            label={t("gaming.gpuPower")}
-            value={<Num>{tick && tick.gpuState !== "valid" ? "--" : formatWatts(tick?.gpuWatts ?? null, 0)}</Num>}
-            badge={{ text: t("dashboard.measuredBadge"), tone: "measured" }}
-          />
-          <StatCard
-            label={t("gaming.cpuPower")}
-            value={<Num>{cpuMissing ? "--" : formatWatts(tick?.cpuWatts ?? null, 0)}</Num>}
-            badge={{ text: t("dashboard.measuredBadge"), tone: "measured" }}
-            sub={cpuMissing && tick ? t("gaming.cpuUnavailable") : undefined}
-          />
-          <StatCard
-            label={t("gaming.systemPower")}
-            value={<Num>{formatWatts(tick?.estimatedTotalWatts ?? null, 0)}</Num>}
-            badge={{ text: t("dashboard.estimatedBadge"), tone: "estimated" }}
-            sub={tick ? t(`dashboard.completeness.${tick.estimateCompleteness}`) : undefined}
-          />
-          <StatCard
-            label={t("gaming.energy")}
-            value={
-              <Num>
-                {live.systemIsLowerBound ? "≥ " : ""}
-                {formatKwh(live.systemKwh * 3_600_000)}
-              </Num>
-            }
-            badge={{ text: t("dashboard.estimatedBadge"), tone: "estimated" }}
-            sub={live.systemIsLowerBound ? t("gaming.lowerBound") : undefined}
-          />
-          <StatCard
-            label={t("gaming.cost")}
-            value={<Cost display={cost} t={t} />}
-            sub={cost.kind === "amount" ? t("dashboard.approxCost") : live.costStatus === "priced" ? undefined : t(COST_STATUS_KEYS[live.costStatus as keyof typeof COST_STATUS_KEYS])}
-          />
+        <div className="flex items-center gap-2 text-[11px] font-semibold">
+          <span className="rounded bg-surface-3 px-2 py-0.5 text-ink-secondary">{live.isManual ? t("gaming.manualBadge") : t("gaming.autoBadge")}</span>
+          <span className={`rounded px-2 py-0.5 ${live.state === "ending" ? "bg-amber-500/15 text-amber-300" : "bg-accent-green/15 text-accent-green"}`}>
+            <span aria-hidden="true">{live.state === "ending" ? "◔ " : "● "}</span>
+            {live.state === "ending" ? t("gaming.ending") : t("gaming.live")}
+          </span>
         </div>
       </div>
-      <ManualControl live={live} monitoring={monitoring} onChanged={onChanged} />
-    </div>
+
+      {partial && <Notice tone="warn">{t("gaming.partialBanner")}</Notice>}
+
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3">
+        <StatCard
+          label={t("gaming.duration")}
+          value={<Num>{formatDuration(live.durationSeconds)}</Num>}
+          sub={unmonitored > 1 ? `${t("gaming.monitored")}: ${formatDuration(live.monitoredSeconds)}` : undefined}
+        />
+        <StatCard
+          label={t("terms.gpuPower")}
+          badge={gpuOk ? "measured" : "unavailable"}
+          value={<Num>{gpuOk ? formatWatts(tick?.gpuWatts ?? null, 0) : "--"}</Num>}
+        />
+        <StatCard
+          label={t("terms.cpuPower")}
+          badge={cpuOk ? "measured" : "unavailable"}
+          value={<Num>{cpuOk ? formatWatts(tick?.cpuWatts ?? null, 0) : "--"}</Num>}
+          sub={!cpuOk && tick ? t("gaming.cpuUnavailable") : undefined}
+        />
+        <StatCard
+          label={t("terms.systemPower")}
+          badge={tick?.estimatedTotalWatts == null ? "unavailable" : tick.estimateCompleteness === "partial" ? "partial" : "estimated"}
+          value={<Num>{tick?.estimatedTotalWatts == null ? "--" : `${tick.estimateCompleteness === "partial" ? "≥ " : ""}${formatWatts(tick.estimatedTotalWatts, 0)}`}</Num>}
+          sub={tick ? t(`completeness.${tick.estimateCompleteness}`) : undefined}
+        />
+        <StatCard
+          label={t("terms.energy")}
+          badge={live.completeness === "none" ? "unavailable" : partial ? "partial" : "estimated"}
+          value={<Num>{live.completeness === "none" ? "--" : `${live.systemIsLowerBound ? "≥ " : ""}${formatEnergy(live.systemKwh * 3_600_000)}`}</Num>}
+          sub={live.systemIsLowerBound ? t("gaming.lowerBound") : undefined}
+        />
+        <StatCard
+          label={t("terms.cost")}
+          badge={cost.kind === "amount" ? "estimated" : "unavailable"}
+          value={<Cost display={cost} />}
+          sub={cost.kind === "amount" ? t("dashboard.approxCost") : live.costStatus === "priced" ? undefined : t(COST_STATUS_KEYS[live.costStatus as keyof typeof COST_STATUS_KEYS])}
+        />
+      </div>
+    </section>
   );
 }
 
 /** Fallback for when automatic detection misses a game: start/stop a session by hand. Obeys the same one-active-session rule (the sidecar enforces it). */
 function ManualControl({ live, monitoring, onChanged }: { live: GamingLiveState | null; monitoring: boolean; onChanged: () => void }) {
   const { t } = useTranslation();
-  const request = useSidecarRequest();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [exe, setExe] = useState("");
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const manualRunning = !!live && live.isManual && live.state !== "candidate";
   const gameRunning = !!live && live.state !== "candidate";
 
@@ -228,7 +215,7 @@ function ManualControl({ live, monitoring, onChanged }: { live: GamingLiveState 
       await fn();
       onChanged();
     } catch (e) {
-      setError(String(e));
+      setError(e);
     } finally {
       setBusy(false);
     }
@@ -236,11 +223,11 @@ function ManualControl({ live, monitoring, onChanged }: { live: GamingLiveState 
 
   if (manualRunning) {
     return (
-      <div className="flex items-center gap-3">
-        <button type="button" className="btn" disabled={busy} onClick={() => run(() => request({ cmd: "stop_manual_gaming" }))}>
+      <div className="flex flex-col items-start gap-2">
+        <button type="button" className="btn" disabled={busy} onClick={() => void run(() => sidecarRequest({ cmd: "stop_manual_gaming" }))}>
           {t("gaming.manual.stop")}
         </button>
-        {error && <span className="text-xs text-red-300">{error}</span>}
+        {error !== null && <ErrorPanel error={error} compact />}
       </div>
     );
   }
@@ -249,18 +236,33 @@ function ManualControl({ live, monitoring, onChanged }: { live: GamingLiveState 
   return (
     <div className="flex flex-col gap-2">
       {!open ? (
-        <div>
-          <button type="button" className="btn" disabled={!monitoring} onClick={() => setOpen(true)} title={monitoring ? undefined : t("gaming.manual.requiresMonitoring")}>
+        <div className="flex flex-col items-start gap-1">
+          <button type="button" className="btn" disabled={!monitoring} onClick={() => setOpen(true)} aria-describedby="manual-hint">
             {t("gaming.manual.start")}
           </button>
+          <span id="manual-hint" className="max-w-prose text-xs text-ink-muted">
+            {monitoring ? t("gaming.manual.hint") : t("gaming.manual.requiresMonitoring")}
+          </span>
         </div>
       ) : (
-        <div className="card flex flex-col gap-3">
-          <p className="text-xs text-ink-secondary">{t("gaming.manual.help")}</p>
+        <form
+          className="card flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!name.trim() || busy) return;
+            void run(async () => {
+              await sidecarRequest({ cmd: "start_manual_gaming", displayName: name.trim(), exeName: exe.trim() || undefined, rememberAsGame: remember });
+              setOpen(false);
+              setName("");
+              setExe("");
+            });
+          }}
+        >
+          <p className="max-w-prose text-sm text-ink-secondary">{t("gaming.manual.help")}</p>
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-sm">
               <span className="label">{t("gaming.manual.name")}</span>
-              <input className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+              <input className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} required />
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="label">{t("gaming.manual.exe")}</span>
@@ -268,31 +270,19 @@ function ManualControl({ live, monitoring, onChanged }: { live: GamingLiveState 
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={remember} disabled={!exe.trim()} onChange={(e) => setRemember(e.target.checked)} />
-              <span>{t("gaming.manual.remember")}</span>
+              <span className={exe.trim() ? "" : "text-ink-muted"}>{t("gaming.manual.remember")}</span>
             </label>
           </div>
           <div className="flex gap-2">
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={busy || !name.trim()}
-              onClick={() =>
-                run(async () => {
-                  await request({ cmd: "start_manual_gaming", displayName: name.trim(), exeName: exe.trim() || undefined, rememberAsGame: remember });
-                  setOpen(false);
-                  setName("");
-                  setExe("");
-                })
-              }
-            >
+            <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>
               {t("gaming.manual.begin")}
             </button>
             <button type="button" className="btn" onClick={() => setOpen(false)}>
-              {t("common.close")}
+              {t("common.cancel")}
             </button>
           </div>
-          {error && <span className="text-xs text-red-300">{error}</span>}
-        </div>
+          {error !== null && <ErrorPanel error={error} compact />}
+        </form>
       )}
     </div>
   );
@@ -302,75 +292,105 @@ function ManualControl({ live, monitoring, onChanged }: { live: GamingLiveState 
 
 function HistorySection({ sessions, onChanged }: { sessions: GamingSessionSummary[] | null; onChanged: () => void }) {
   const { t } = useTranslation();
-  const request = useSidecarRequest();
   const [detail, setDetail] = useState<GamingSessionDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   const open = (id: number) =>
-    request<GamingSessionDetail>({ cmd: "get_gaming_session", gamingSessionId: id })
-      .then((d) => {
+    sidecarRequest<GamingSessionDetail>({ cmd: "get_gaming_session", gamingSessionId: id }).then(
+      (d) => {
         setDetail(d);
         setError(null);
-      })
-      .catch((e) => setError(String(e)));
+      },
+      (e) => setError(e),
+    );
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold">{t("gaming.history.title")}</h2>
-      {error && <ErrorBox message={error} />}
+    <section className="flex flex-col gap-3" aria-labelledby="gaming-history">
+      <h2 id="gaming-history" className="text-sm font-semibold">
+        {t("gaming.history.title")}
+      </h2>
+      {error !== null && <ErrorPanel error={error} compact />}
       {!sessions ? (
-        <p className="text-sm text-ink-secondary">{t("common.loading")}</p>
+        <Loading />
       ) : sessions.length === 0 ? (
-        <p className="text-sm text-ink-secondary">{t("gaming.history.none")}</p>
+        <EmptyState title={t("gaming.history.none")}>{t("gaming.history.noneHelp")}</EmptyState>
       ) : (
-        <div className="card overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-surface-border text-ink-secondary">
-                <th className="p-2 text-start">{t("gaming.history.game")}</th>
-                <th className="p-2 text-start">{t("gaming.history.start")}</th>
-                <th className="p-2 text-start">{t("gaming.history.duration")}</th>
-                <th className="p-2 text-start">{t("gaming.history.monitored")}</th>
-                <th className="p-2 text-start">{t("gaming.history.energy")}</th>
-                <th className="p-2 text-start">{t("gaming.history.cost")}</th>
-                <th className="p-2 text-start">{t("gaming.history.completeness")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((s) => (
-                <tr key={s.id} className="cursor-pointer border-b border-surface-border/50 hover:bg-surface-2" onClick={() => void open(s.id)}>
-                  <td className="p-2">
-                    <GameName>{s.displayName}</GameName>
-                    {s.isManual && <span className="ms-2 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] text-ink-secondary">{t("gaming.manualBadge")}</span>}
-                  </td>
-                  <td className="p-2">
-                    <Num>{formatLocalDateTime(s.startedUtc)}</Num>
-                  </td>
-                  <td className="p-2">
-                    <Num>{formatDuration(s.durationSeconds)}</Num>
-                  </td>
-                  <td className="p-2">
-                    <Num>{formatDuration(s.monitoredSeconds)}</Num>
-                  </td>
-                  <td className="p-2">
-                    <Num>
-                      {s.systemIsLowerBound && s.systemJoules > 0 ? "≥ " : ""}
-                      {s.completeness === "none" ? "--" : formatKwh(s.systemJoules)}
-                    </Num>
-                  </td>
-                  <td className="p-2">
-                    <Cost display={costDisplay(s.costStatus, s.cost, s.currency)} t={t} />
-                    {s.costPrecision !== "exact" && s.costStatus === "priced" && <span className="ms-1 text-amber-400">*</span>}
-                  </td>
-                  <td className="p-2">{t(`dashboard.completeness.${s.completeness}`)}</td>
+        <>
+          <div className="card overflow-x-auto p-0">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>{t("gaming.history.game")}</th>
+                  <th>{t("gaming.history.start")}</th>
+                  <th>{t("gaming.history.duration")}</th>
+                  <th>{t("gaming.history.monitored")}</th>
+                  <th>{t("gaming.history.energy")}</th>
+                  <th>{t("gaming.history.cost")}</th>
+                  <th>{t("gaming.history.completeness")}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {sessions.map((s) => (
+                  <tr key={s.id} className={detail?.summary.id === s.id ? "bg-surface-2" : "hover:bg-surface-2/60"}>
+                    <td>
+                      <button type="button" className="text-start text-accent-blue underline-offset-2 hover:underline" onClick={() => void open(s.id)} aria-label={t("gaming.history.openSession", { name: s.displayName })}>
+                        <GameName>{s.displayName}</GameName>
+                      </button>
+                      {s.isManual && <span className="ms-2 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] text-ink-secondary">{t("gaming.manualBadge")}</span>}
+                    </td>
+                    <td>
+                      <Num>{formatLocalDateTime(s.startedUtc)}</Num>
+                    </td>
+                    <td>
+                      <Num>{formatDuration(s.durationSeconds)}</Num>
+                    </td>
+                    <td>
+                      <Num>{formatDuration(s.monitoredSeconds)}</Num>
+                    </td>
+                    <td>
+                      <Num>
+                        {s.completeness === "none" ? "--" : `${s.systemIsLowerBound && s.systemJoules > 0 ? "≥ " : ""}${formatKwh(s.systemJoules)}`}
+                      </Num>
+                    </td>
+                    <td>
+                      <Cost display={costDisplay(s.costStatus, s.cost, s.currency)} />
+                      {s.costPrecision !== "exact" && s.costStatus === "priced" && (
+                        <span className="ms-1 text-amber-300" aria-label={t("gaming.history.approximate")} title={t("gaming.history.approximate")}>
+                          *
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <CompletenessBadge completeness={s.completeness} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {sessions.length >= HISTORY_LIMIT && <p className="text-xs text-ink-muted">{t("gaming.history.limit", { count: HISTORY_LIMIT })}</p>}
+        </>
       )}
-      {detail && <SessionDetail detail={detail} onClose={() => setDetail(null)} onChanged={onChanged} />}
+      {detail && (
+        <SessionDetail
+          detail={detail}
+          onClose={() => setDetail(null)}
+          onChanged={() => {
+            onChanged();
+            setDetail(null);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-surface-border/40 py-1 text-sm">
+      <dt className="text-ink-secondary">{label}</dt>
+      <dd className="min-w-0 break-words text-end">{children}</dd>
+    </div>
   );
 }
 
@@ -379,121 +399,118 @@ function SessionDetail({ detail, onClose, onChanged }: { detail: GamingSessionDe
   const s = detail.summary;
   const unmonitored = unmonitoredSeconds(s.durationSeconds, s.monitoredSeconds);
   const lb = s.systemIsLowerBound;
+  const lbMark = lb ? "≥ " : "";
   const cost = costDisplay(s.costStatus, s.cost, s.currency);
-
-  const Row = ({ label, children }: { label: string; children: ReactNode }) => (
-    <div className="flex items-baseline justify-between gap-4 border-b border-surface-border/40 py-1 text-sm">
-      <span className="text-ink-secondary">{label}</span>
-      <span className="text-end">{children}</span>
-    </div>
-  );
+  const watts = (value: number | null, lower = false) => (value === null ? "--" : `${lower ? lbMark : ""}${formatWatts(value)}`);
 
   return (
-    <div className="card flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="text-base">
+    <section className="card flex flex-col gap-3" aria-labelledby="gaming-detail">
+      <div className="flex items-center justify-between gap-2">
+        <h3 id="gaming-detail" className="text-base">
           <GameName>{s.displayName}</GameName> <Num className="text-ink-muted">#{s.id}</Num>
-        </span>
+        </h3>
         <button type="button" className="btn" onClick={onClose}>
           {t("common.close")}
         </button>
       </div>
 
-      {lb && <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-300">{t("gaming.history.lowerBoundNote")}</div>}
+      {lb && <Notice tone="warn">{t("gaming.history.lowerBoundNote")}</Notice>}
 
       <div className="grid gap-x-8 md:grid-cols-2">
-        <div>
-          <Row label={t("gaming.history.start")}>
+        <dl>
+          <DetailRow label={t("gaming.history.start")}>
             <Num>{formatLocalDateTime(s.startedUtc)}</Num>
-          </Row>
-          <Row label={t("gaming.history.end")}>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.end")}>
             <Num>{s.endedUtc ? formatLocalDateTime(s.endedUtc) : "--"}</Num>
-          </Row>
-          <Row label={t("gaming.history.duration")}>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.duration")}>
             <Num>{formatDuration(s.durationSeconds)}</Num>
-          </Row>
-          <Row label={t("gaming.history.monitored")}>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.monitored")}>
             <Num>{formatDuration(s.monitoredSeconds)}</Num>
-          </Row>
-          <Row label={t("gaming.history.unmonitored")}>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.unmonitored")}>
             <Num>{formatDuration(unmonitored)}</Num>
-          </Row>
-          <Row label={t("gaming.history.gaps")}>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.gaps")}>
             <Num>{detail.gaps.count}</Num>
-          </Row>
-          <Row label={t("gaming.history.endReason")}>{t(endLabelKey(s))}</Row>
-          <Row label={t("gaming.history.source")}>{t(SOURCE_KEYS[s.source])}</Row>
-          <Row label={t("gaming.history.executable")}>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.endReason")}>{t(endLabelKey(s))}</DetailRow>
+          <DetailRow label={t("gaming.history.source")}>{t(SOURCE_KEYS[s.source])}</DetailRow>
+          <DetailRow label={t("gaming.history.executable")}>
             <Num>{detail.exePath ?? s.exeName}</Num>
-          </Row>
-        </div>
-        <div>
-          <Row label={t("gaming.history.energy")}>
-            <Num>{s.completeness === "none" ? "--" : `${lb ? "≥ " : ""}${formatKwh(s.systemJoules)}`}</Num>
-          </Row>
-          <Row label={t("gaming.history.cost")}>
-            <Cost display={cost} t={t} />
-          </Row>
+          </DetailRow>
+        </dl>
+        <dl>
+          <DetailRow label={t("gaming.history.energy")}>
+            <Num>{s.completeness === "none" ? "--" : `${lbMark}${formatKwh(s.systemJoules)}`}</Num>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.cost")}>
+            <Cost display={cost} />
+          </DetailRow>
           {s.costStatus === "withheldPartial" && s.lowerBoundCost !== null && (
-            <Row label={t("gaming.history.lowerBoundCost")}>
+            <DetailRow label={t("gaming.history.lowerBoundCost")}>
               <Num>≥ {formatMoney(s.lowerBoundCost, s.currency ?? "EUR", 2)}</Num>
-            </Row>
+            </DetailRow>
           )}
-          {s.costStatus !== "priced" && <Row label={t("gaming.history.costStatus")}>{t(COST_STATUS_KEYS[s.costStatus as keyof typeof COST_STATUS_KEYS])}</Row>}
-          <Row label={t("gaming.history.avgCpu")}>
-            <Num>{s.avgCpuWatts === null ? "--" : formatWatts(s.avgCpuWatts)}</Num>
-          </Row>
-          <Row label={t("gaming.history.avgGpu")}>
-            <Num>{s.avgGpuWatts === null ? "--" : formatWatts(s.avgGpuWatts)}</Num>
-          </Row>
-          <Row label={t("gaming.history.avgSystem")}>
-            <Num>{s.avgSystemWatts === null ? "--" : `${lb ? "≥ " : ""}${formatWatts(s.avgSystemWatts)}`}</Num>
-          </Row>
-          <Row label={t("gaming.history.peakCpu")}>
-            <Num>{s.peakCpuWatts === null ? "--" : formatWatts(s.peakCpuWatts)}</Num>
-          </Row>
-          <Row label={t("gaming.history.peakGpu")}>
-            <Num>{s.peakGpuWatts === null ? "--" : formatWatts(s.peakGpuWatts)}</Num>
-          </Row>
-          <Row label={t("gaming.history.peakSystem")}>
-            <Num>{s.peakSystemWatts === null ? "--" : `${lb ? "≥ " : ""}${formatWatts(s.peakSystemWatts)}`}</Num>
-          </Row>
-          <Row label={t("gaming.history.completeness")}>{t(`dashboard.completeness.${s.completeness}`)}</Row>
-        </div>
+          {s.costStatus !== "priced" && <DetailRow label={t("gaming.history.costStatus")}>{t(COST_STATUS_KEYS[s.costStatus as keyof typeof COST_STATUS_KEYS])}</DetailRow>}
+          <DetailRow label={t("gaming.history.avgCpu")}>
+            <Num>{watts(s.avgCpuWatts)}</Num>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.avgGpu")}>
+            <Num>{watts(s.avgGpuWatts)}</Num>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.avgSystem")}>
+            <Num>{watts(s.avgSystemWatts, true)}</Num>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.peakCpu")}>
+            <Num>{watts(s.peakCpuWatts)}</Num>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.peakGpu")}>
+            <Num>{watts(s.peakGpuWatts)}</Num>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.peakSystem")}>
+            <Num>{watts(s.peakSystemWatts, true)}</Num>
+          </DetailRow>
+          <DetailRow label={t("gaming.history.completeness")}>
+            <CompletenessBadge completeness={s.completeness} />
+          </DetailRow>
+        </dl>
       </div>
       {s.costPrecision !== "exact" && <p className="text-xs text-amber-300">{t("gaming.history.approxPrice")}</p>}
-      <GameActions summary={s} onChanged={() => { onChanged(); onClose(); }} />
-    </div>
+      <GameActions summary={s} onChanged={onChanged} />
+    </section>
   );
 }
 
 /** Manual correction from a session: rename the game everywhere, or never detect this executable again. */
 function GameActions({ summary, onChanged }: { summary: GamingSessionSummary; onChanged: () => void }) {
   const { t } = useTranslation();
-  const request = useSidecarRequest();
   const [name, setName] = useState(summary.displayName);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const hasExecutable = !summary.gameKey.startsWith("manual:");
 
   const save = (kind: GameMappingKind) =>
-    request({ cmd: "set_game_mapping", exeName: summary.exeName, mappingKind: kind, displayName: kind === "game" ? name.trim() : undefined })
-      .then(onChanged)
-      .catch((e) => setError(String(e)));
+    sidecarRequest({ cmd: "set_game_mapping", exeName: summary.exeName, mappingKind: kind, displayName: kind === "game" ? name.trim() : undefined }).then(onChanged, (e) => setError(e));
 
   if (!hasExecutable) return null;
   return (
-    <div className="flex flex-wrap items-end gap-2 border-t border-surface-border pt-3">
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="label">{t("gaming.games.name")}</span>
-        <input className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
-      </label>
-      <button type="button" className="btn" disabled={!name.trim()} onClick={() => void save("game")}>
-        {t("gaming.games.rename")}
-      </button>
-      <button type="button" className="btn" onClick={() => void save("excluded")}>
-        {t("gaming.games.exclude")}
-      </button>
-      {error && <span className="text-xs text-red-300">{error}</span>}
+    <div className="flex flex-col gap-2 border-t border-surface-border pt-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="label">{t("gaming.games.name")}</span>
+          <input className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <button type="button" className="btn" disabled={!name.trim()} onClick={() => void save("game")}>
+          {t("gaming.games.rename")}
+        </button>
+        <button type="button" className="btn" onClick={() => void save("excluded")}>
+          {t("gaming.games.exclude")}
+        </button>
+      </div>
+      <p className="max-w-prose text-xs text-ink-muted">{t("gaming.games.actionsNote")}</p>
+      {error !== null && <ErrorPanel error={error} compact />}
     </div>
   );
 }
@@ -505,41 +522,43 @@ function AggregatesSection({ aggregates }: { aggregates: GameAggregate[] | null 
   if (!aggregates || aggregates.length === 0) return null;
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold">{t("gaming.aggregates.title")}</h2>
-      <p className="text-xs text-ink-secondary">{t("gaming.aggregates.help")}</p>
+    <section className="flex flex-col gap-3" aria-labelledby="gaming-aggregates">
+      <h2 id="gaming-aggregates" className="text-sm font-semibold">
+        {t("gaming.aggregates.title")}
+      </h2>
+      <p className="max-w-prose text-xs text-ink-secondary">{t("gaming.aggregates.help")}</p>
       <div className="card overflow-x-auto p-0">
-        <table className="w-full text-sm">
+        <table className="table">
           <thead>
-            <tr className="border-b border-surface-border text-ink-secondary">
-              <th className="p-2 text-start">{t("gaming.history.game")}</th>
-              <th className="p-2 text-start">{t("gaming.aggregates.sessions")}</th>
-              <th className="p-2 text-start">{t("gaming.aggregates.playTime")}</th>
-              <th className="p-2 text-start">{t("gaming.aggregates.monitored")}</th>
-              <th className="p-2 text-start">{t("gaming.aggregates.avgSession")}</th>
-              <th className="p-2 text-start">{t("gaming.aggregates.complete")}</th>
-              <th className="p-2 text-start">{t("gaming.aggregates.partial")}</th>
+            <tr>
+              <th>{t("gaming.history.game")}</th>
+              <th>{t("gaming.aggregates.sessions")}</th>
+              <th>{t("gaming.aggregates.playTime")}</th>
+              <th>{t("gaming.aggregates.monitored")}</th>
+              <th>{t("gaming.aggregates.avgSession")}</th>
+              <th>{t("gaming.aggregates.complete")}</th>
+              <th>{t("gaming.aggregates.partial")}</th>
             </tr>
           </thead>
           <tbody>
             {aggregates.map((g) => (
-              <tr key={g.gameKey} className="border-b border-surface-border/50 align-top">
-                <td className="p-2">
+              <tr key={g.gameKey}>
+                <td>
                   <GameName>{g.displayName}</GameName>
                 </td>
-                <td className="p-2">
+                <td>
                   <Num>{g.sessionCount}</Num>
                 </td>
-                <td className="p-2">
+                <td>
                   <Num>{formatDuration(g.totalDurationSeconds)}</Num>
                 </td>
-                <td className="p-2">
+                <td>
                   <Num>{formatDuration(g.totalMonitoredSeconds)}</Num>
                 </td>
-                <td className="p-2">
+                <td>
                   <Num>{formatDuration(g.averageSessionDurationSeconds)}</Num>
                 </td>
-                <td className="p-2">
+                <td>
                   {g.complete.sessions === 0 ? (
                     <span className="text-ink-muted">--</span>
                   ) : (
@@ -553,15 +572,14 @@ function AggregatesSection({ aggregates }: { aggregates: GameAggregate[] | null 
                     </div>
                   )}
                 </td>
-                <td className="p-2">
+                <td>
                   {g.partial.sessions === 0 ? (
                     <span className="text-ink-muted">--</span>
                   ) : (
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-0.5">
+                      <Badge kind="partial" />
                       <Num>≥ {formatKwh(g.partial.systemJoules)}</Num>
-                      <span className="text-xs text-ink-secondary">
-                        {g.partial.sessions} {t("gaming.aggregates.sessionsShort")}, {t("gaming.aggregates.noCost")}
-                      </span>
+                      <span className="text-xs text-ink-secondary">{t("gaming.aggregates.partialSessions", { count: g.partial.sessions })}</span>
                     </div>
                   )}
                 </td>
@@ -576,46 +594,83 @@ function AggregatesSection({ aggregates }: { aggregates: GameAggregate[] | null 
 
 // ---------------------------------------------------------------- games / mappings
 
-function GamesSection({ mappings, onChanged }: { mappings: GameMapping[]; onChanged: () => void }) {
+function GamesSection({ mappings, onChanged }: { mappings: GameMapping[] | null; onChanged: () => void }) {
   const { t } = useTranslation();
-  const request = useSidecarRequest();
+  const visible = useUiVisible();
   const [exe, setExe] = useState("");
   const [name, setName] = useState("");
   const [kind, setKind] = useState<GameMappingKind>("game");
+  const [editing, setEditing] = useState<GameMapping | null>(null);
   const [running, setRunning] = useState<RunningExecutable[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [saved, setSaved] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+
+  const reset = () => {
+    setExe("");
+    setName("");
+    setKind("game");
+    setEditing(null);
+  };
 
   const pick = async () => {
     try {
-      setRunning(await request<RunningExecutable[]>({ cmd: "get_running_executables" }));
+      setRunning(await sidecarRequest<RunningExecutable[]>({ cmd: "get_running_executables" }));
+      setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(e);
     }
   };
 
-  const add = async () => {
+  const save = async () => {
     try {
-      await request({ cmd: "set_game_mapping", exeName: exe.trim(), mappingKind: kind, displayName: kind === "game" ? name.trim() || undefined : undefined });
-      setExe("");
-      setName("");
+      await sidecarRequest({ cmd: "set_game_mapping", exeName: exe.trim(), mappingKind: kind, displayName: kind === "game" ? name.trim() || undefined : undefined });
+      reset();
       setError(null);
+      setSaved(true);
       onChanged();
     } catch (e) {
-      setError(String(e));
+      setError(e);
     }
   };
 
   const remove = (m: GameMapping) =>
-    request({ cmd: "remove_game_mapping", exeName: m.exeName, exePath: m.exePath || undefined })
-      .then(onChanged)
-      .catch((e) => setError(String(e)));
+    sidecarRequest({ cmd: "remove_game_mapping", exeName: m.exeName, exePath: m.exePath || undefined }).then(
+      () => {
+        if (editing?.id === m.id) reset();
+        setSaved(false);
+        onChanged();
+      },
+      (e) => setError(e),
+    );
+
+  const edit = (m: GameMapping) => {
+    setEditing(m);
+    setExe(m.exePath || m.exeName); // a path-specific mapping keeps its path so saving updates *that* entry
+    setName(m.displayName ?? "");
+    setKind(m.kind);
+    setSaved(false);
+    formRef.current?.scrollIntoView({ block: "nearest" });
+  };
+
+  // Only one window of the "pick" list is meaningful; drop it when the window is hidden so it never goes stale.
+  useEffect(() => {
+    if (!visible) setRunning(null);
+  }, [visible]);
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold">{t("gaming.games.title")}</h2>
-      <p className="text-xs text-ink-secondary">{t("gaming.games.help")}</p>
+    <section className="flex flex-col gap-3" aria-labelledby="gaming-games">
+      <h2 id="gaming-games" className="text-sm font-semibold">
+        {t("gaming.games.title")}
+      </h2>
+      <p className="max-w-prose text-xs text-ink-secondary">{t("gaming.games.help")}</p>
 
-      <div className="card flex flex-col gap-3">
+      <div ref={formRef} className="card flex flex-col gap-3">
+        {editing && (
+          <p className="text-xs text-accent-blue">
+            {t("gaming.games.editing")} <Num>{editing.exeName}</Num>
+          </p>
+        )}
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-sm">
             <span className="label">{t("gaming.games.exe")}</span>
@@ -632,15 +687,20 @@ function GamesSection({ mappings, onChanged }: { mappings: GameMapping[]; onChan
               <option value="excluded">{t("gaming.games.kindExcluded")}</option>
             </select>
           </label>
-          <button type="button" className="btn btn-primary" disabled={!exe.trim()} onClick={() => void add()}>
-            {t("gaming.games.add")}
+          <button type="button" className="btn btn-primary" disabled={!exe.trim()} onClick={() => void save()}>
+            {editing ? t("common.save") : t("gaming.games.add")}
           </button>
+          {editing && (
+            <button type="button" className="btn" onClick={reset}>
+              {t("common.cancel")}
+            </button>
+          )}
           <button type="button" className="btn" onClick={() => void pick()}>
             {t("gaming.games.pick")}
           </button>
         </div>
         {running && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t("gaming.games.pick")}>
             {running.length === 0 && <span className="text-xs text-ink-secondary">{t("gaming.games.pickNone")}</span>}
             {running.map((r) => (
               <button
@@ -659,24 +719,49 @@ function GamesSection({ mappings, onChanged }: { mappings: GameMapping[]; onChan
             ))}
           </div>
         )}
-        {error && <span className="text-xs text-red-300">{error}</span>}
+        {saved && (
+          <p role="status" className="text-xs text-accent-green">
+            ✓ {t("common.saved")}
+          </p>
+        )}
+        {error !== null && <ErrorPanel error={error} compact />}
       </div>
 
-      {mappings.length === 0 ? (
+      {mappings === null ? (
+        <Loading />
+      ) : mappings.length === 0 ? (
         <p className="text-sm text-ink-secondary">{t("gaming.games.empty")}</p>
       ) : (
         <div className="card overflow-x-auto p-0">
-          <table className="w-full text-sm">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{t("gaming.games.exe")}</th>
+                <th>{t("gaming.games.kind")}</th>
+                <th>{t("gaming.games.name")}</th>
+                <th>
+                  <span className="sr-only">{t("gaming.games.actions")}</span>
+                </th>
+              </tr>
+            </thead>
             <tbody>
               {mappings.map((m) => (
-                <tr key={m.id} className="border-b border-surface-border/50">
-                  <td className="p-2">
+                <tr key={m.id} className={editing?.id === m.id ? "bg-surface-2" : undefined}>
+                  <td>
                     <Num>{m.exeName}</Num>
+                    {m.exePath && (
+                      <div dir="ltr" className="max-w-[18rem] truncate text-xs text-ink-muted" title={m.exePath}>
+                        {m.exePath}
+                      </div>
+                    )}
                   </td>
-                  <td className="p-2">{m.kind === "game" ? t("gaming.games.kindGame") : t("gaming.games.kindExcluded")}</td>
-                  <td className="p-2">{m.displayName ? <GameName>{m.displayName}</GameName> : <span className="text-ink-muted">--</span>}</td>
-                  <td className="p-2 text-end">
-                    <button type="button" className="btn" onClick={() => void remove(m)}>
+                  <td>{m.kind === "game" ? t("gaming.games.kindGame") : t("gaming.games.kindExcluded")}</td>
+                  <td>{m.displayName ? <GameName>{m.displayName}</GameName> : <span className="text-ink-muted">--</span>}</td>
+                  <td className="whitespace-nowrap text-end">
+                    <button type="button" className="btn me-2" onClick={() => edit(m)} aria-label={t("gaming.games.editFor", { name: m.exeName })}>
+                      {t("gaming.games.edit")}
+                    </button>
+                    <button type="button" className="btn" onClick={() => void remove(m)} aria-label={t("gaming.games.removeFor", { name: m.exeName })}>
                       {t("gaming.games.remove")}
                     </button>
                   </td>
@@ -686,7 +771,7 @@ function GamesSection({ mappings, onChanged }: { mappings: GameMapping[]; onChan
           </table>
         </div>
       )}
-      <p className="text-xs text-ink-muted">{t("gaming.games.privacyNote")}</p>
+      <p className="max-w-prose text-xs text-ink-muted">{t("gaming.games.privacyNote")}</p>
     </section>
   );
 }

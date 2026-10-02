@@ -1,5 +1,7 @@
 # Manual validation procedures
 
+> Milestone 006: the complete list of deferred real-world checks (with status) is `docs/PRE_RELEASE_CHECKLIST.md`. Run validation against a scratch database (`WATTSCOPE_DB`), never the real one.
+
 Things the automated suites and `desktop/scripts/validate-lifecycle.ps1`
 cannot check because they need a person at the machine (real sleep, the
 native tray, logoff/shutdown, UAC). Each procedure says exactly what to do

@@ -31,6 +31,12 @@ namespace WattScope.Probe.Commands;
 /// </summary>
 public static class ServeCommand
 {
+    /// <summary>Exit code when another recorder owns the database (never retried by the host).</summary>
+    public const int RecorderLockHeldExitCode = 3;
+
+    /// <summary>Exit code when the database cannot be opened or migrated (never retried by the host: a restart cannot fix it).</summary>
+    public const int DatabaseErrorExitCode = 4;
+
     public static async Task<int> RunAsync(
         DiscoverySnapshot snapshot,
         IReadOnlyList<ISensorProvider> providers,
@@ -64,12 +70,26 @@ public static class ServeCommand
         // supported pattern of a separate --summary/--set-price process
         // alongside --record (docs/STORAGE.md). SqliteEnergyStore is not
         // thread-safe, so each connection is used by exactly one logical owner.
-        using var recordStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
-        using var queryStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
-        // A third connection, used only by game detection (Milestone 005), which writes gaming sessions
-        // from its own threads and must not share the recording connection with the energy monitor.
-        using var gamingStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
         var logger = loggerFactory.CreateLogger("WattScope.Probe.Serve");
+        SqliteEnergyStore recordStore, queryStore, gamingStore;
+        try
+        {
+            recordStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
+            queryStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
+            // A third connection, used only by game detection (Milestone 005), which writes gaming sessions
+            // from its own threads and must not share the recording connection with the energy monitor.
+            gamingStore = SqliteEnergyStore.Open(dbPath, loggerFactory.CreateLogger<SqliteEnergyStore>());
+        }
+        catch (Exception ex) when (ex is DatabaseSchemaTooNewException or DatabaseMigrationException or Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException)
+        {
+            // Restarting cannot fix a database that will not open: report why and exit with a code the host never retries.
+            logger.LogError(ex, "The database could not be opened");
+            ServeProtocol.WriteLine(new StatusMessage { State = "error", Message = $"The database could not be opened: {ex.Message}" });
+            return DatabaseErrorExitCode;
+        }
+        using var recordStoreOwner = recordStore;
+        using var queryStoreOwner = queryStore;
+        using var gamingStoreOwner = gamingStore;
 
         foreach (var recovered in recordStore.RecoverInterruptedSessions())
         {
@@ -104,7 +124,17 @@ public static class ServeCommand
             ServeProtocol.WriteLine, logger, gaming);
 
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var processor = new ServeRequestProcessor(queryStore, controller, () => runCts.Cancel(), logger, gaming);
+        var diagnostics = new DiagnosticsInfo
+        {
+            AppVersion = appVersion,
+            OsDescription = $"{snapshot.OperatingSystem.Caption} {snapshot.OperatingSystem.Version}".Trim(),
+            Architecture = snapshot.OperatingSystem.Architecture,
+            Elevated = snapshot.OperatingSystem.IsElevated,
+            Providers = snapshot.Providers,
+            Sensors = builder.Bindings,
+            DatabasePath = queryStore.DatabasePath
+        };
+        var processor = new ServeRequestProcessor(queryStore, controller, () => runCts.Cancel(), logger, gaming, diagnostics);
 
         // Must run on its own thread, not as a plain un-awaited async call:
         // Console.In.ReadLineAsync does not reliably yield control back before

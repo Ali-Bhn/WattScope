@@ -162,6 +162,28 @@ real game was run**: the Call of Duty / Warzone validation is a manual
 procedure (`docs/MANUAL_VALIDATION.md` section 7) and is **UNVERIFIED** until
 the user performs it. See `docs/GAMING.md` and `docs/PROJECT_STATE.md`.
 
+## Milestone 006 -- Application Completion, UX Polish & Feature-Complete Candidate
+
+Finish the application itself (not release validation): audit, a coherent
+four-page structure, Dashboard as the status page, genuinely useful Reports
+(Today / Day / Month / Monitoring sessions, Complete and Partial never merged),
+Gaming polish, Settings in six validated groups, electricity-price UX with
+guarded history, estimation-assumption UX, a short persisted first run,
+deliberate loading/empty/error states, Diagnostics inside Settings, safe data
+management (guarded deletion, maintenance), database hardening (migration
+backup/failure handling, damaged-setting fallbacks), visible sidecar
+starting/restarting/failed states with a safe Retry, a performance and memory
+review, accessibility, RTL/small-window layout, localization audit,
+centralised formatting, consistent terminology, tests, and a feature-freeze
+classification.
+
+Out of scope and **not done**: any real-world validation (real game, FPS,
+Administrator, install/upgrade/uninstall, shutdown/restart/logoff) -- all
+UNVERIFIED in `docs/PRE_RELEASE_CHECKLIST.md`; Windows auto-start; a privileged
+helper; new pages; new estimation logic.
+
+Status: **implemented -- FEATURE COMPLETE**. See `docs/PROJECT_STATE.md`.
+
 ## Later milestones (not started)
 
 Numbering and scope for milestones after 005 are not yet defined in this

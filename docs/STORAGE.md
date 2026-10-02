@@ -32,6 +32,39 @@ is unchanged and never writes to the database.
 | `gaming_session_energy` | per gaming session per electricity price: the energy totals and the time span they cover | ~1-2 rows per gaming session; kept |
 | `game_mapping` | the user's decisions about executables (game / excluded / name) | 1 row per mapping |
 
+`app_setting` also holds `first_run_completed` (Milestone 006) and the
+sampling interval.
+
+## Operations (Milestone 006)
+
+- **Schema** is still v4. **Before** any migration of an existing database a
+  consistent copy is made next to it (`VACUUM INTO`):
+  `wattscope.db.pre-migration-v<N>.bak` (kept, never overwritten). Each
+  migration is one transaction; a failure rolls back, leaves `user_version`
+  unchanged and raises `DatabaseMigrationException` (the sidecar then exits
+  with code 4 and the UI explains it; nothing is retried automatically).
+- **Damaged persisted values** never reach the maths: an out-of-range raw
+  retention -> default (7 days); invalid estimation settings -> documented
+  defaults; an unreadable price row is skipped and logged (its energy then
+  reports as *unpriced*, never as free).
+- **WAL / checkpoint**: SQLite's default auto-checkpoint. User-triggered
+  maintenance (Settings -> Data) prunes raw samples past retention, returns
+  free pages with `incremental_vacuum(2048)` steps, and runs a **PASSIVE**
+  checkpoint (never blocks the recorder). **No full VACUUM is ever run.**
+- **Integrity**: `PRAGMA quick_check` + `foreign_key_check` on demand
+  (`check_integrity`); `--dbinfo` still runs the full `integrity_check`.
+- **Deleting history** (`preview_history_deletion` / `delete_history`): only
+  *finished* monitoring sessions (status not Active) whose end is older than
+  the chosen age (>= 30 days), with their buckets, price splits, gaps,
+  availability, raw samples, sensors and gaming sessions, one transaction per
+  session. Never the running session, prices, estimation/app settings, game
+  mappings or the file. The request must carry the exact session count the
+  preview returned.
+- **Indexes** verified by query-plan tests; a synthetic year of buckets reads
+  in milliseconds (see `docs/PROJECT_STATE.md`, Milestone 006).
+- The database is never deleted automatically; uninstalling does not remove
+  it by default.
+
 Costs are **not** stored: they are computed at report time from energy
 buckets and the price history, so they always reflect the documented
 pricing rules (`docs/ENERGY_MODEL.md` section 4).

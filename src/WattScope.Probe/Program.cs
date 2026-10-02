@@ -52,7 +52,7 @@ if (!options.NeedsHardware)
             loggerFactory.CreateLogger<SqliteEnergyStore>());
         return DatabaseCommands.Run(options, store);
     }
-    catch (DatabaseSchemaTooNewException ex)
+    catch (Exception ex) when (ex is DatabaseSchemaTooNewException or DatabaseMigrationException)
     {
         Console.Error.WriteLine(ex.Message);
         return 1;

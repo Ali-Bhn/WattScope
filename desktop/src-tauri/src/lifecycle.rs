@@ -16,12 +16,30 @@ const BACKOFF: [Duration; MAX_RESTARTS] = [Duration::from_secs(1), Duration::fro
 /// `ServeCommand.cs`). Restarting cannot fix that, so it is never retried.
 pub const RECORDER_LOCK_HELD_EXIT_CODE: i32 = 3;
 
+/// `wattscope-probe --serve` exits with this code when the database cannot
+/// be opened or migrated (damaged file, newer schema, failed upgrade).
+/// Restarting cannot fix that either, so it is never retried automatically.
+pub const DATABASE_ERROR_EXIT_CODE: i32 = 4;
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum GiveUpReason {
     /// Another process owns the recording lock. The host must never kill
     /// processes by executable name to take it over.
     RecorderLockHeld,
+    /// The database could not be opened or upgraded.
+    DatabaseError,
     TooManyRestarts,
+}
+
+impl GiveUpReason {
+    /// Stable machine-readable code the UI turns into a localized explanation.
+    pub fn code(self) -> &'static str {
+        match self {
+            GiveUpReason::RecorderLockHeld => "recorderLockHeld",
+            GiveUpReason::DatabaseError => "databaseError",
+            GiveUpReason::TooManyRestarts => "tooManyRestarts",
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -44,6 +62,9 @@ impl RestartPolicy {
     pub fn on_unexpected_exit(&mut self, now: Instant, exit_code: Option<i32>) -> Decision {
         if exit_code == Some(RECORDER_LOCK_HELD_EXIT_CODE) {
             return Decision::GiveUp(GiveUpReason::RecorderLockHeld);
+        }
+        if exit_code == Some(DATABASE_ERROR_EXIT_CODE) {
+            return Decision::GiveUp(GiveUpReason::DatabaseError);
         }
         self.restarts.retain(|t| now.saturating_duration_since(*t) < RESTART_WINDOW);
         if self.restarts.len() >= MAX_RESTARTS {
@@ -126,6 +147,38 @@ mod tests {
         );
         // and it did not consume restart budget
         assert!(matches!(p.on_unexpected_exit(t0(), Some(1)), Decision::Restart { .. }));
+    }
+
+    #[test]
+    fn a_database_that_cannot_be_opened_is_never_retried_automatically() {
+        let mut p = RestartPolicy::new();
+        assert_eq!(
+            p.on_unexpected_exit(t0(), Some(DATABASE_ERROR_EXIT_CODE)),
+            Decision::GiveUp(GiveUpReason::DatabaseError)
+        );
+        // and, like the lock case, it did not consume restart budget
+        assert!(matches!(p.on_unexpected_exit(t0(), Some(1)), Decision::Restart { .. }));
+    }
+
+    #[test]
+    fn give_up_reasons_have_stable_ui_codes() {
+        assert_eq!(GiveUpReason::RecorderLockHeld.code(), "recorderLockHeld");
+        assert_eq!(GiveUpReason::DatabaseError.code(), "databaseError");
+        assert_eq!(GiveUpReason::TooManyRestarts.code(), "tooManyRestarts");
+    }
+
+    #[test]
+    fn an_explicit_user_retry_after_giving_up_starts_with_a_full_budget() {
+        let mut p = RestartPolicy::new();
+        let now = t0();
+        for _ in 0..MAX_RESTARTS {
+            p.on_unexpected_exit(now, Some(1));
+        }
+        assert_eq!(p.on_unexpected_exit(now, Some(1)), Decision::GiveUp(GiveUpReason::TooManyRestarts));
+        p.reset();
+        for _ in 0..MAX_RESTARTS {
+            assert!(matches!(p.on_unexpected_exit(now, Some(1)), Decision::Restart { .. }));
+        }
     }
 
     #[test]

@@ -1,8 +1,7 @@
-<#
+﻿<#
 .SYNOPSIS
   Real, process-level validation of the packaged WattScope app's lifecycle
-  (Milestone 004). Launches the actual release exe, so it records real
-  sessions in the real default database (%LOCALAPPDATA%\WattScope\wattscope.db)
+  (Milestone 004). Launches the actual release exe, so it records sessions in a SCRATCH database (WATTSCOPE_DB, see _scratch-db.ps1), never your real history
   -- run it deliberately, not in CI.
 
   Checks: single instance (sequential and racing launches), close-to-tray
@@ -19,6 +18,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "_scratch-db.ps1")
+Assert-NoWattScopeRunning
+$ScratchDb = Use-ScratchDatabase "lifecycle"   # every launched process (and the --sessions CLI below) inherits WATTSCOPE_DB
 $AppExe = (Resolve-Path $AppExe).Path
 $ProbeExe = (Resolve-Path $ProbeExe).Path
 $results = New-Object System.Collections.Generic.List[object]
@@ -154,3 +156,4 @@ $failed = @($results | Where-Object { $_.Result -eq "FAIL" })
 Write-Host ("{0} checks, {1} failed" -f $results.Count, $failed.Count)
 StopAll
 if ($failed.Count -gt 0) { exit 1 }
+

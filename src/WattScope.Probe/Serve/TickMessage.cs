@@ -36,6 +36,12 @@ public sealed record TickMessage
     /// <summary>Complete estimated energy for the session so far, in kWh.</summary>
     public required double SessionKwh { get; init; }
     /// <summary>
+    /// Partial estimated energy so far, in kWh: time in which a required measured input (usually CPU package
+    /// power) was missing. It is a lower bound and is never added into <see cref="SessionKwh"/>; the UI shows
+    /// it separately and labelled Partial.
+    /// </summary>
+    public double SessionPartialKwh { get; init; }
+    /// <summary>
     /// A live, approximate running cost at whatever price is in effect right
     /// now -- for display only. The exact, reconciled cost (which correctly
     /// splits any price change mid-session) comes from a "get_summary"

@@ -3,40 +3,132 @@
     "title": "WattScope"
   },
   "nav": {
+    "label": "Main navigation",
     "dashboard": "Dashboard",
     "gaming": "Gaming",
     "reports": "Reports",
-    "settings": "Settings"
+    "settings": "Settings",
+    "status": {
+      "recording": "Monitoring is running",
+      "stopped": "Monitoring is stopped",
+      "down": "The background monitor is not running"
+    }
+  },
+  "badge": {
+    "measured": "MEASURED",
+    "estimated": "ESTIMATED",
+    "partial": "PARTIAL",
+    "unavailable": "UNAVAILABLE",
+    "complete": "COMPLETE",
+    "assumed": "ASSUMED"
+  },
+  "completeness": {
+    "complete": "Complete",
+    "partial": "Partial (lower bound)",
+    "none": "No estimate"
+  },
+  "readingState": {
+    "valid": "Measured",
+    "missing": "No reading",
+    "unavailable": "Sensor unavailable",
+    "nonFinite": "Invalid reading",
+    "negative": "Invalid reading",
+    "aboveMaximum": "Reading out of range",
+    "implausibleZero": "Reads 0 W (not plausible)",
+    "ambiguous": "Sensor is ambiguous",
+    "notPresent": "Not present on this PC"
+  },
+  "terms": {
+    "systemPower": "Estimated system power",
+    "cpuPower": "CPU package power",
+    "gpuPower": "GPU board power",
+    "otherPower": "Other components (assumed)",
+    "psuEfficiency": "PSU efficiency (assumed)",
+    "cpuEnergy": "CPU package energy",
+    "gpuEnergy": "GPU board energy",
+    "energy": "Estimated system energy",
+    "cost": "Electricity cost (estimated)",
+    "monitoringSession": "Monitoring session",
+    "monitoringSessions": "Monitoring sessions",
+    "gamingSession": "Gaming session"
+  },
+  "common": {
+    "loading": "Loading...",
+    "working": "Working...",
+    "retry": "Retry",
+    "save": "Save",
+    "saved": "Saved",
+    "cancel": "Cancel",
+    "close": "Close",
+    "na": "n/a",
+    "moreInfo": "More information"
+  },
+  "errors": {
+    "details": "Technical details",
+    "backendUnavailable": {
+      "title": "The background monitor is not responding",
+      "hint": "WattScope is starting or restarting its monitor. Wait a moment and try again; if it keeps failing, see the message at the top of the window."
+    },
+    "timeout": {
+      "title": "The monitor took too long to answer",
+      "hint": "It may be busy. Try again in a moment."
+    },
+    "database": {
+      "title": "The database could not be read or written",
+      "hint": "Your data was not changed. Check that the disk is available and not full, then try again. The database location is shown under Settings, Diagnostics."
+    },
+    "validation": {
+      "title": "That could not be done",
+      "hint": "The request was refused. The technical details below say why."
+    },
+    "internal": {
+      "title": "Something went wrong inside WattScope",
+      "hint": "Try again. If it keeps happening, copy the diagnostics from Settings and include them in a bug report."
+    }
+  },
+  "backend": {
+    "starting": "Starting the background monitor...",
+    "restarting": {
+      "title": "The background monitor stopped and is restarting",
+      "hint": "WattScope restarts it automatically. The gap is recorded honestly: no energy is invented for the time it was down."
+    },
+    "failed": {
+      "title": "The background monitor is not running"
+    },
+    "retrying": "Retrying...",
+    "retryFailed": "The monitor could not be started again.",
+    "reason": {
+      "tooManyRestarts": "The monitor kept stopping unexpectedly, so automatic restarts were stopped. Nothing is being recorded. Choose Retry to start it again.",
+      "recorderLockHeld": "Another WattScope is already recording to this database. Close it (use Exit WattScope from its tray icon), then choose Retry.",
+      "databaseError": "The database could not be opened or upgraded, so nothing can be recorded. Your data was not changed. Check Diagnostics for its location, then choose Retry.",
+      "spawnFailed": "The monitor program could not be started. Reinstalling WattScope usually fixes this. Choose Retry to try again."
+    }
+  },
+  "validation": {
+    "empty": "Enter a value.",
+    "notNumber": "Enter a number, for example 0.30.",
+    "notInteger": "Enter a whole number.",
+    "belowMin": "Enter at least {{min}}.",
+    "aboveMax": "Enter at most {{max}}.",
+    "tooManyDecimals": "Use at most {{decimals}} decimal places.",
+    "currency": "Enter a 3-letter currency code, for example EUR.",
+    "dateTime": "Enter a valid date and time."
+  },
+  "chart": {
+    "title": "Live power",
+    "cpu": "CPU",
+    "gpu": "GPU",
+    "total": "Estimated total",
+    "noData": "Waiting for samples...",
+    "ariaLabel": "Line chart of CPU, GPU and estimated total power over the last few minutes",
+    "note": "A gap in a line means that reading was unavailable at that time; it is never drawn as 0 W."
   },
   "dashboard": {
-    "systemPower": "Estimated system power",
-    "cpuPower": "CPU package",
-    "gpuPower": "GPU board",
-    "otherPower": "Other components (assumed)",
-    "sessionDuration": "Session duration",
-    "sessionEnergy": "Session energy",
-    "sessionCost": "Session cost",
-    "sensorAvailability": "Sensor availability",
-    "estimateCompleteness": "Estimate completeness",
-    "monitoringStatus": "Monitoring status",
-    "unavailable": "Unavailable",
-    "notElevated": "Not elevated -- CPU power unavailable",
-    "approxCost": "approx., live",
-    "estimatedBadge": "ESTIMATED",
-    "measuredBadge": "MEASURED",
-    "status": {
-      "recording": "Recording",
-      "suspended": "Suspended (system sleep)",
-      "stopped": "Stopped",
-      "error": "Error",
-      "recovered": "Recovered",
-      "resumed": "Resumed"
-    },
-    "completeness": {
-      "complete": "Complete",
-      "partial": "Partial (lower bound)",
-      "none": "No estimate"
-    },
+    "title": "Dashboard",
+    "subtitle": "What WattScope is measuring right now.",
+    "interval": "Sampling interval",
+    "startMonitoring": "Start monitoring",
+    "stopMonitoring": "Stop monitoring",
     "quality": {
       "starting": "Starting...",
       "complete": "Complete monitoring",
@@ -47,25 +139,41 @@
     },
     "qualityHelp": {
       "starting": "Waiting for the first sample...",
-      "partial": "CPU power is unavailable (WattScope is not running as Administrator on a machine that needs it). The GPU is still monitored. The system figure is a lower bound and no cost is shown.",
+      "partial": "CPU power is unavailable, so the system figures are lower bounds and no cost is shown. The GPU is still monitored.",
       "sensorUnavailable": "No required sensor is available right now, so there is no estimate.",
-      "stopped": "Nothing is being recorded. Closing this window does not stop monitoring -- only Stop monitoring or Exit does.",
-      "unavailable": "The background monitor is not running. Choose Start monitoring to bring it back."
+      "stopped": "Nothing is being recorded. Closing this window does not stop monitoring; only Stop monitoring or Exit does.",
+      "unavailable": "The background monitor is not running. See the message above."
     },
-    "startMonitoring": "Start monitoring",
-    "stopMonitoring": "Stop monitoring",
-    "costWithheld": "Cost is not shown while the estimate is incomplete"
-  },
-  "chart": {
-    "title": "Live power",
-    "cpu": "CPU",
-    "gpu": "GPU",
-    "total": "Estimated total",
-    "noData": "Waiting for samples..."
+    "sections": {
+      "power": "Power now",
+      "session": "This monitoring session",
+      "sensors": "Sensors"
+    },
+    "hints": {
+      "systemPower": "Estimated system power = (CPU package + GPU board + other components) / PSU efficiency. It is calculated from sensors and two assumptions you can set; it is not read from the wall socket.",
+      "otherPower": "A constant you set for everything WattScope cannot measure: motherboard, memory, storage, fans. It is an assumption, not a measurement."
+    },
+    "otherSub": "Set in Settings",
+    "lowerBound": "Lower bound (partial)",
+    "noReading": {
+      "waiting": "Waiting for a sample",
+      "stopped": "Monitoring is stopped"
+    },
+    "sessionDurationSub": "Monitored time so far",
+    "approxCost": "approximate, live; the exact cost is in Reports",
+    "costWithheld": "Not shown while the estimate is incomplete",
+    "setPrice": "Set an electricity price to see costs",
+    "partialEnergyNote": "Part of this session had no CPU reading. The figure above is a lower bound; {{complete}} of it is Complete energy.",
+    "partialEnergyNoteNone": "This session had no CPU reading, so none of its energy is Complete. The figure above is a lower bound.",
+    "cpuNeedsAdmin": "On some PCs the CPU sensor can only be read when WattScope is launched with Run as administrator. WattScope never elevates itself.",
+    "monitorError": "The monitor reported a problem",
+    "monitorErrorHint": "Monitoring may have stopped. You can start it again; whatever was recorded so far is kept."
   },
   "gaming": {
     "title": "Gaming",
-    "sessionTitle": "Gaming Session",
+    "subtitle": "Energy used while you play, measured from the same monitoring as everywhere else.",
+    "detectionOff": "Automatic game detection is switched off",
+    "detectionOffHelp": "Games will not be recognized automatically. You can still start a gaming session by hand.",
     "live": "LIVE",
     "ending": "ENDING",
     "manualBadge": "Manual",
@@ -77,11 +185,6 @@
     "running": "Running",
     "duration": "Duration",
     "monitored": "Monitored",
-    "gpuPower": "GPU power",
-    "cpuPower": "CPU power",
-    "systemPower": "Estimated system power",
-    "energy": "Energy",
-    "cost": "Estimated cost",
     "lowerBound": "Lower bound (partial)",
     "cpuUnavailable": "Unavailable",
     "partialBanner": "Partial: CPU power is not available, so energy and system power are lower bounds and no complete cost is shown. GPU figures are still measured.",
@@ -107,16 +210,19 @@
     "manual": {
       "start": "Start gaming session manually",
       "stop": "Stop manual gaming session",
+      "hint": "For a game that is not detected automatically.",
       "help": "Use this when a game is not detected automatically. The session uses the same monitoring and energy rules as an automatic one.",
       "name": "Game name",
       "exe": "Program (optional)",
       "remember": "Detect this program automatically next time",
       "begin": "Start session",
-      "requiresMonitoring": "Start monitoring first"
+      "requiresMonitoring": "Start monitoring first."
     },
     "history": {
       "title": "Gaming history",
       "none": "No gaming sessions recorded yet.",
+      "noneHelp": "A session is recorded when WattScope detects a game while monitoring is running, or when you start one by hand.",
+      "openSession": "Show details for {{name}}",
       "game": "Game",
       "start": "Start",
       "end": "End",
@@ -132,108 +238,300 @@
       "endReason": "Ended",
       "source": "Recognized by",
       "executable": "Program",
-      "avgCpu": "Average CPU power",
-      "avgGpu": "Average GPU power",
-      "avgSystem": "Average system power (estimated)",
-      "peakCpu": "Peak CPU power",
-      "peakGpu": "Peak GPU power",
-      "peakSystem": "Peak system power (estimated)",
+      "avgCpu": "Average CPU package power",
+      "avgGpu": "Average GPU board power",
+      "avgSystem": "Average estimated system power",
+      "peakCpu": "Peak CPU package power",
+      "peakGpu": "Peak GPU board power",
+      "peakSystem": "Peak estimated system power",
       "lowerBoundNote": "This session is partial: values marked with ≥ are lower bounds, not complete estimates.",
-      "approxPrice": "* Approximate: a price was added after this session was recorded, so its cost is split by time, not by measurement."
+      "approxPrice": "* Approximate: a price was added after this session was recorded, so its cost is split by time, not by measurement.",
+      "approximate": "Approximate",
+      "limit": "Showing the newest {{count}} sessions. Older ones are still included in the per-game totals below."
     },
     "aggregates": {
       "title": "Per game",
       "help": "Complete and partial sessions are never added together. Averages are weighted by time, not averaged per session.",
       "sessions": "Sessions",
-      "sessionsShort": "sessions",
+      "partialSessions_one": "{{count}} partial session, no cost",
+      "partialSessions_other": "{{count}} partial sessions, no cost",
       "playTime": "Play time",
       "monitored": "Monitored",
       "avgSession": "Average session",
       "complete": "Complete sessions",
       "partial": "Partial sessions",
-      "unpriced": "unpriced",
-      "noCost": "no cost"
+      "unpriced": "unpriced"
     },
     "games": {
       "title": "Manage games",
-      "help": "Mark a program as a game, give it a name, or exclude it from detection. Your choices are stored on this computer only.",
+      "help": "Mark a program as a game, give it a name, or exclude it from detection. Edit or remove an entry at any time. Your choices are stored on this computer only.",
       "exe": "Program",
       "name": "Game name",
       "kind": "Action",
       "kindGame": "Is a game",
       "kindExcluded": "Never a game",
       "add": "Save",
+      "edit": "Edit",
+      "editing": "Editing:",
+      "editFor": "Edit {{name}}",
       "remove": "Remove",
+      "removeFor": "Remove {{name}}",
+      "actions": "Actions",
       "pick": "Pick a running program",
       "pickNone": "No candidate programs are running.",
       "empty": "No programs marked yet.",
       "rename": "Rename",
       "exclude": "Never detect this program",
+      "actionsNote": "Renaming applies to every session of this program. Excluding stops it from being detected as a game again; you can undo that under Manage games.",
       "privacyNote": "Detection only reads the list of running programs. WattScope never touches a game's memory or files and does not interact with the game."
     }
   },
   "reports": {
     "title": "Reports",
-    "currentSession": "Current session",
-    "previousSessions": "Previous sessions",
-    "daily": "Daily energy",
-    "monthly": "Monthly",
-    "costHistory": "Electricity cost history",
-    "noSessions": "No sessions recorded yet.",
+    "subtitle": "Energy and estimated cost for a day, a month or a single monitoring session. All times are your local time.",
+    "tabs": {
+      "today": "Today",
+      "day": "Day",
+      "month": "Month",
+      "sessions": "Monitoring sessions"
+    },
+    "titles": {
+      "today": "Today, {{date}}",
+      "day": "Day {{date}}",
+      "month": "{{month}}",
+      "session": "Monitoring session #{{id}}"
+    },
+    "selectDay": "Day",
     "selectMonth": "Month",
-    "approxNotice": "Approximate: a price was added after this period was recorded and the raw samples needed to split it exactly are no longer available (past retention).",
-    "replayedNotice": "Exact: reconstructed by replaying raw samples recorded during this period.",
-    "session": "Session",
+    "previous": "Previous",
+    "next": "Next",
+    "previousDay": "Previous day",
+    "nextDay": "Next day",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "thisMonth": "This month",
+    "invalidDate": "That is not a valid date.",
+    "noData": "Nothing was monitored in this period. WattScope records only while monitoring is running.",
+    "monitoredTime": "Monitored time",
+    "systemEnergy": "Estimated system energy",
+    "hints": {
+      "systemEnergy": "Energy estimated for the whole PC from CPU and GPU measurements plus your assumptions. Time with every required sensor working is Complete; time with a sensor missing is Partial and is only a lower bound. The two are never added together."
+    },
+    "completeOnly": "Complete time only. In addition:",
+    "partialOnly": "Partial only: a lower bound",
+    "noEstimate": "No estimate for this period",
+    "notMeasured": "Not measured in this period",
+    "costCompleteOnly": "Complete energy only",
+    "costPartialOnly": "Lower bound: partial energy only",
+    "costNoPrice": "No electricity price covered this energy",
+    "costNone": "No cost available",
+    "partialCostNote": "Partial energy would add at least",
+    "unpriced": "of energy was used before an electricity price existed; it is not priced, and not counted as free.",
+    "gaps_one": "{{count}} monitoring gap",
+    "gaps_other": "{{count}} monitoring gaps",
+    "gapsNote": "no energy is recorded for gaps",
+    "uncovered": "of monitored time had no usable estimate.",
+    "replayedNotice": "Exact: reconstructed from raw samples recorded during this period.",
+    "approxNotice": "Approximate: a price was added after this period was recorded and the raw samples needed to split it exactly are no longer available.",
+    "assumptions": "Estimation settings used",
+    "assumptionsNote": "System energy = (CPU package + GPU board + other components) / PSU efficiency. Other components and PSU efficiency are assumptions, not measurements. These are the exact values used for this period:",
+    "gamingOnDay": "Gaming sessions that started on this day",
+    "openGaming": "Open Gaming",
+    "daily": "Day by day",
+    "date": "Date",
+    "completeEnergy": "Complete energy",
+    "partialEnergy": "Partial energy",
+    "completeness": "Completeness",
+    "approximate": "Approximate cost",
+    "dailyNote": "Complete and partial energy are shown in separate columns because they cannot be added honestly. Cost covers complete, priced energy only.",
+    "noSessions": "No monitoring sessions recorded yet.",
+    "noSessionsHelp": "A monitoring session starts when you start monitoring. Open the Dashboard to begin.",
     "started": "Started",
-    "ended": "Ended",
-    "duration": "Duration",
-    "energy": "Energy",
-    "cost": "Cost",
-    "costUnavailable": "n/a"
+    "sessionsNote": "Select a session number for its full report. The running session is updated every few seconds.",
+    "status": {
+      "active": "running",
+      "stopped": "stopped",
+      "interrupted": "interrupted"
+    }
   },
   "settings": {
     "title": "Settings",
-    "electricityPrice": "Electricity price",
-    "pricePerKwh": "Price per kWh",
-    "currency": "Currency",
-    "effectiveFrom": "Effective from",
-    "effectiveNow": "Now",
-    "priceHistory": "Price history",
-    "otherComponents": "Other component power",
-    "psuEfficiency": "PSU efficiency",
-    "monitoringInterval": "Monitoring interval",
-    "language": "Language",
-    "retention": "Raw data retention",
-    "retentionDays": "days",
-    "retentionHelp": "15-minute energy totals and cost history are kept indefinitely regardless of this setting; only the raw per-sample readings are pruned.",
-    "measured": "Measured",
-    "assumption": "Assumption you set -- not a measurement",
-    "save": "Save",
-    "saved": "Saved",
-    "invalidPrice": "Enter a non-negative price.",
-    "invalidEfficiency": "PSU efficiency must be between 1% and 100%.",
-    "invalidInterval": "Interval must be at least 250 ms.",
-    "background": {
-      "title": "Background monitoring",
-      "description": "Closing this window keeps WattScope running in the system tray and monitoring continues. WattScope only runs while you have launched it; it does not start with Windows.",
+    "subtitle": "Changes are saved when you press Save. Each value shows its unit and the range it accepts.",
+    "jump": "Settings groups",
+    "groups": {
+      "monitoring": "Monitoring",
+      "estimation": "Energy estimation",
+      "electricity": "Electricity",
+      "data": "Data",
+      "language": "Language",
+      "application": "Application"
+    },
+    "monitoring": {
+      "description": "How often WattScope reads the sensors.",
+      "interval": "Sampling interval",
+      "intervalHelp": "Between 250 and 60000 ms. A shorter interval follows peaks more closely; 1000 ms is a good default. Changing it continues the same session; a short gap is recorded and no energy is invented across it."
+    },
+    "estimation": {
+      "description": "How WattScope turns CPU and GPU measurements into an estimate for the whole PC.",
+      "formulaTitle": "How the estimate is made",
+      "formula": "Estimated system power = (CPU package power + GPU board power + other components) / PSU efficiency.",
+      "notWall": "CPU and GPU power are measured by sensors. The rest is an assumption, so this is an estimate and not a measurement of wall power. A smart plug would measure that directly.",
+      "assumptionNote": "An assumption you set, not a measurement.",
+      "otherWatts": "Other components",
+      "otherWattsHelp": "A constant for the parts WattScope cannot measure: motherboard, memory, storage, fans. 0 to 2000 W; 30 to 80 W is typical for a desktop.",
+      "psuEfficiency": "PSU efficiency",
+      "psuHelp": "How much of the power drawn from the wall reaches your components. 50 to 100 %; 85 to 92 % is typical for a modern power supply.",
+      "inputsTitle": "Required measured inputs",
+      "required": "required for a Complete estimate",
+      "notRequired": "not required",
+      "appliesNext": "New values apply to monitoring sessions started from now on. A session that is already running, and every past session, keeps the values it was recorded with."
+    },
+    "electricity": {
+      "description": "The price of electricity, used for every cost estimate. Prices are kept as a history.",
+      "current": "Current price",
+      "since": "since",
+      "noneTitle": "No electricity price is set",
+      "none": "Without a price, WattScope shows energy but no costs. Costs are never shown as zero.",
+      "newPrice": "Add a price",
+      "pricePerKwh": "Price per kWh",
+      "priceHelp": "Up to 6 decimal places, for example 0.3050. Up to 100.",
+      "currency": "Currency",
+      "currencyHelp": "A 3-letter code, for example EUR. It is fixed after the first price.",
+      "currencyLocked": "All prices use one currency.",
+      "effective": "When it applies",
+      "fromNow": "From now on (recommended)",
+      "fromDate": "From a specific date and time",
+      "effectiveAt": "Starts at",
+      "pastWarning": "A date in the past changes the estimated cost of energy that is already recorded. WattScope will show you what it affects before anything is saved.",
+      "appendOnly": "A new price is added to the history. Earlier prices are never edited or deleted, and the cost of past energy is only recalculated if you choose a date in the past.",
+      "addPrice": "Add price",
+      "saved": "Price added: {{price}}",
+      "history": "Price history",
+      "historyEmpty": "No prices yet.",
+      "from": "Applies from",
+      "status": "Status",
+      "statusCurrent": "current",
+      "statusScheduled": "scheduled",
+      "statusEarlier": "earlier",
+      "historyNote": "Each price applies until the next one starts. Energy is always priced at the price in effect when it was used.",
+      "confirmTitle": "Apply a price to the past?",
+      "confirmApply": "Apply price",
+      "confirmBody_one": "This price starts {{date}}. Energy already recorded from then on, in {{count}} monitoring session, will be re-costed at it",
+      "confirmBody_other": "This price starts {{date}}. Energy already recorded from then on, in {{count}} monitoring sessions, will be re-costed at it",
+      "confirmRecalc": "The new cost applies from that date until the next price change. Reports for those days will change.",
+      "confirmKept": "Earlier price entries stay in the history unchanged."
+    },
+    "data": {
+      "description": "What WattScope keeps on this computer, and how to look after it. Nothing here is uploaded anywhere.",
+      "retention": "Raw samples",
+      "retentionDays": "Keep raw samples for",
+      "days": "days",
+      "retentionHelp": "0 to 3650 days. Only the per-second readings are pruned after this time (0 keeps none). The 15-minute energy totals, costs, sessions and gaming history are kept regardless.",
+      "storage": "Storage",
+      "dbSize": "Database size",
+      "gamingSessions": "Gaming sessions",
+      "buckets": "15-minute energy totals",
+      "rawSamples": "Raw samples",
+      "prices": "Price entries",
+      "rawRange": "Raw samples cover",
+      "storageNote": "The database is a single local file. WattScope never deletes it automatically, and uninstalling does not remove your history by default.",
+      "maintenance": "Maintenance",
+      "maintenanceHelp": "Removes raw samples past the retention above, returns unused space to the disk in small steps and checks the database. It never changes your totals, costs or history.",
+      "optimize": "Optimize storage now",
+      "checkIntegrity": "Check database",
+      "maintenanceDone_one": "Done. {{count}} old raw sample was removed.",
+      "maintenanceDone_other": "Done. {{count}} old raw samples were removed.",
+      "integrityOk": "The database is healthy.",
+      "integrityBad": "The database check found a problem",
+      "deleteTitle": "Delete old history",
+      "deleteHelp": "Permanently removes finished monitoring sessions, and the gaming sessions recorded in them, that ended before the age you choose. It never touches the session that is running, your electricity prices, your settings or your game list, and it does not delete the database file.",
+      "deleteOlderThan": "Older than",
+      "deleteMin": "At least 30 days.",
+      "deletePreview": "Show what would be deleted",
+      "deleteNothing": "Nothing is that old. Nothing would be deleted.",
+      "deleteScope_one": "{{count}} finished monitoring session would be deleted",
+      "deleteScope_other": "{{count}} finished monitoring sessions would be deleted",
+      "deleteButton": "Delete...",
+      "deleteDone_one": "Deleted {{count}} monitoring session and its recorded data.",
+      "deleteDone_other": "Deleted {{count}} monitoring sessions and their recorded data.",
+      "confirmTitle": "Delete this history permanently?",
+      "confirmBody_one": "{{count}} finished monitoring session will be deleted, with:",
+      "confirmBody_other": "{{count}} finished monitoring sessions will be deleted, with:",
+      "confirmDelete": "Delete permanently",
+      "confirmReports": "Reports for those days and months will no longer include this energy, and costs for them will disappear.",
+      "confirmKept": "Kept: the running session, newer history, electricity prices, estimation settings, the game list and the database file.",
+      "confirmIrreversible": "This cannot be undone."
+    },
+    "language": {
+      "description": "The language of the app and of the tray menu.",
+      "label": "Language",
+      "note": "Dates and numbers follow the language's conventions. Units such as W, kWh and EUR, and CPU and GPU, are always written the same way."
+    },
+    "application": {
+      "description": "How WattScope runs on this computer.",
+      "background": "Background monitoring",
+      "backgroundHelp": "Closing this window keeps WattScope running in the system tray and monitoring continues. WattScope only runs while you have launched it; it does not start with Windows.",
       "exit": "Exit WattScope",
-      "exitHelp": "Stops monitoring, saves the session and closes WattScope completely."
+      "exitHelp": "Stops monitoring, saves the session and closes WattScope completely.",
+      "exitTitle": "Exit WattScope?",
+      "exitBody": "Monitoring will stop and the current session will be saved. WattScope will not record anything until you start it again.",
+      "administrator": "Administrator",
+      "administratorHelp": "On some PCs the CPU sensor can only be read when WattScope runs as Administrator. WattScope never elevates itself: for complete CPU monitoring, close it and launch it with Run as administrator.",
+      "elevated": "Running as Administrator",
+      "notElevated": "Not running as Administrator",
+      "about": "About and diagnostics"
     },
-    "administrator": {
-      "title": "Administrator",
-      "description": "On some machines CPU power can only be read when WattScope runs as Administrator. WattScope never elevates itself: for complete CPU monitoring, close it and launch it manually with Run as administrator.",
-      "running": "Running as Administrator",
-      "notRunning": "Not running as Administrator"
-    },
-    "intervalHelp": "Changing the interval continues the same session; a short gap is recorded and no energy is invented across it."
+    "diagnostics": {
+      "show": "Show version and diagnostics",
+      "failed": "Diagnostics are not available right now",
+      "version": "WattScope version",
+      "schema": "Database schema",
+      "dbSize": "Database size",
+      "monitoring": "Monitoring",
+      "backend": "Background monitor",
+      "runtime": ".NET runtime",
+      "os": "Windows",
+      "webview": "WebView2",
+      "location": "Database location",
+      "sensors": "Selected energy sensors",
+      "noSensors": "None selected",
+      "providers": "Sensor providers",
+      "available": "available",
+      "unavailable": "unavailable",
+      "needsAdmin": "needs Administrator",
+      "copy": "Copy diagnostics",
+      "copied": "Copied",
+      "copyFailed": "Could not copy to the clipboard",
+      "privacy": "The copied text has versions, states and the two selected sensors only: no computer or user name, no database contents. The profile folder in the path is replaced by a variable."
+    }
   },
-  "common": {
-    "loading": "Loading...",
-    "retry": "Retry",
-    "watts": "W",
-    "kwh": "kWh",
-    "seconds": "s",
-    "close": "Close",
-    "na": "n/a"
+  "firstRun": {
+    "title": "Welcome to WattScope",
+    "intro": "A quick look at what WattScope does, and what it does not know.",
+    "points": {
+      "local": {
+        "title": "It stays on your PC.",
+        "body": "WattScope monitors your computer's hardware power locally. There is no account, no cloud and no upload."
+      },
+      "measured": {
+        "title": "Some values are measured.",
+        "body": "CPU and GPU power come straight from the sensors in your hardware."
+      },
+      "estimated": {
+        "title": "The whole PC is estimated.",
+        "body": "Without a smart plug, system power is calculated from those sensors plus two assumptions you can adjust. It is an estimate, not a wall measurement."
+      },
+      "cpu": {
+        "title": "CPU power may need permission.",
+        "body": "On some PCs it can only be read when WattScope runs as Administrator. If it is missing, WattScope says so, shows a lower bound and never guesses."
+      },
+      "price": {
+        "title": "Add your electricity price for costs.",
+        "body": "Without a price you still see energy, just no cost."
+      }
+    },
+    "footer": "You can change all of this later in Settings.",
+    "setPrice": "Set my electricity price",
+    "start": "Get started"
   }
 }

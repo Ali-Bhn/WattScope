@@ -1,9 +1,17 @@
 # Project State
 
-Last updated: 2026-10-02, after implementing Milestone 005 (gaming session
-detection and energy analytics) on top of Milestone 004.
+Last updated: 2026-10-02, after Milestone 006 (application completion, UX
+polish, feature-complete candidate) on top of Milestone 005.
 
 ## Status
+
+- **Milestone 006** -- Application Completion, UX Polish & Feature-Complete
+  Candidate: **implemented; the application is FEATURE COMPLETE** (see the
+  Milestone 006 section and "Feature freeze classification" below). All
+  real-world validation is **deliberately deferred** and **UNVERIFIED** --
+  `docs/PRE_RELEASE_CHECKLIST.md`. Real Warzone, FPS impact, Administrator
+  Complete sessions, installing/upgrading/uninstalling, shutdown/restart/logoff
+  were not run.
 
 - **Milestone 001** -- complete (details below, unchanged).
 - **Milestone 002** -- Energy Calculation, Electricity Cost & Persistent
@@ -29,6 +37,192 @@ detection and energy analytics) on top of Milestone 004.
   harmless stand-in processes on the real packaged app. **No real game has been
   run: the Call of Duty / Warzone validation is UNVERIFIED** until the user
   performs `docs/MANUAL_VALIDATION.md` section 7.
+
+# Milestone 006
+
+Scope: finish the *application*, not validate a release. No schema change
+(still v4), no new page, no new sensor/estimation logic.
+
+## Product audit (Part A) -- what was wrong, and what was done
+
+Baseline `c78cae6`, clean tree. Gap analysis between what the engine could do,
+what the UI exposed, and what was unfinished or misleading:
+
+| Finding | Resolution |
+|---|---|
+| Reports had no Today/Day view although the protocol supported `day`; month picker used `toISOString().slice(0,7)` = the **UTC** month (wrong for hours around every month boundary) | Tabs Today / Day / Month / Monitoring sessions; local day/month keys (`lib/dates.ts`, tested incl. DST and month-end) |
+| A Partial session showed **"0.000 kWh"** in the session list and Reports (only Complete energy was displayed) | Complete and Partial shown side by side, never merged; a missing measurement is `--`, never 0 (`lib/reports.ts`) |
+| Dashboard "Session energy" for a Partial session showed Complete-only energy; "no price" and "incomplete estimate" were conflated | `tick.sessionPartialKwh` (new field); headline is `>= complete + partial` labelled PARTIAL; `costVisibility` distinguishes `noPrice` from `withheldPartial`; tray shows `>=` for partial |
+| Settings: wrong error strings (PSU/retention reused "invalid price"), hard-coded English ("Database", "Schema", "ms", "unpriced", "n/a"), raw enum text ("(implausibleZero)"), unit-less fields, dead "assumption" badge text | Rebuilt in six groups; every value has unit, range, concise help, inline validation (`lib/validation.ts`); all text localized; reading states localized |
+| Electricity price: effective-from was a bare datetime field; a price dated in the past silently re-costed recorded energy | Price UX with append-only history, preview of what a past date affects, explicit confirmation, **and a server-side guard** (`confirmHistorical`) |
+| No Retry after the host gave up (the dashboard Start button asked a dead sidecar); no starting/restarting/failed UI; failure reasons were English host strings | Backend state machine surfaced (`backend-state` event, `get_backend_state`, `retry_sidecar`), localized banner with Retry |
+| No first-run experience | One short dialog, persisted in the database (`first_run_completed`) |
+| Settings re-rendered on every tick (three independent subscriptions + per-page state); chart history was lost on navigation; Gaming polled every 5 s even when its data is already in the tick; polls ran while the window was hidden | One window-wide store, slice selectors, bounded history in the store, visibility-gated polling, Gaming poll removed |
+| Errors were `String(e)` panels | `ErrorPanel` (localized title + hint, technical details collapsed), per-kind classification (`lib/errors.ts`); stack traces never shown |
+| Mapping list (Gaming) had no header, no edit; history/aggregates had thin empty states | Edit/Remove with accessible names, headers, empty states with a reason |
+| Muted text 3.1:1 contrast; no visible focus ring; colour-only status; tooltip not keyboard-reachable | `ink-muted` raised, global `:focus-visible` ring, every status is glyph + word, `Hint` is a real button (Esc dismisses), reduced-motion respected |
+| `validate-lifecycle.ps1` / `measure-background.ps1` recorded into the **real** database and stop processes by name | Now use a scratch DB (`_scratch-db.ps1`), print both paths, refuse to run if a WattScope is already running |
+
+Navigation was already the four-page structure the brief prefers
+(Dashboard, Gaming, Reports, Settings); no page was added. Diagnostics/About
+lives inside Settings (Application group), not on a new page.
+
+## What was built
+
+| Area | Implementation |
+|---|---|
+| Dashboard | Status card (state + sampling interval + Start/Stop), *Power now* (system / CPU / GPU / other), *This monitoring session* (duration / energy / cost), sensor status, live chart. Badges **MEASURED / ESTIMATED / PARTIAL / UNAVAILABLE / COMPLETE / ASSUMED**: glyph + word, one meaning everywhere |
+| Reports | Today (auto-refresh while visible) / Day / Month (+ day-by-day table, Complete and Partial columns) / Monitoring sessions; per period: monitored time, estimated system energy (Complete + Partial separately), CPU/GPU measured energy, cost (priced Complete energy; Partial lower bound and unpriced energy reported on their own), gaps, price-precision notices, the estimation settings used; gaming sessions started that day listed (not summed in) |
+| Gaming | Honest empty states, start-monitoring shortcut, live card from the tick stream, history, per-game aggregates, edit/remove mappings, manual-session explanation; Partial/Complete consistent with the rest |
+| Settings | Monitoring, Energy estimation (formula + "estimate, not wall measurement" stated once, assumptions badged ASSUMED), Electricity (current price, add price, when it applies, history), Data (raw retention, storage, maintenance, guarded history deletion), Language, Application (background/exit, Administrator note, About + Diagnostics) |
+| Sidecar protocol (additive) | `get_app_state`, `complete_first_run`, `get_price_info`, `preview_price`, guarded `set_price`, `get_diagnostics`, `check_integrity`, `run_maintenance`, `preview_history_deletion`, `delete_history`; `get_gaming_sessions` accepts `day`; tick gains `sessionPartialKwh` |
+| Host (Rust) | `backend-state` event + `get_backend_state` / `retry_sidecar` / `get_host_info`; exit code 4 (database cannot be opened) is never retried; the pending restart no longer spawns if a sidecar is already alive |
+| Database | **No schema change.** Pre-migration backup (`VACUUM INTO`), migration failure type, safe reads of damaged settings, bounded incremental vacuum, PASSIVE checkpoint maintenance, guarded deletion (see `docs/STORAGE.md`) |
+| Formatting | `lib/format.ts` central, locale-aware separators/date order, always Latin digits + Gregorian + fixed technical units; machine values never pass through it |
+| Dev tooling | `desktop/src/dev/mock.ts` + `vite build --mode mock`: renders the UI in a plain browser on synthetic data (used for the screenshots below). Not in production bundles (verified) |
+
+## Verification (all automated, non-disruptive, scratch databases only)
+
+| Check | Result |
+|---|---|
+| `dotnet test WattScope.slnx` | 389 passed, 0 failed (new: 21 storage, 21 probe tests) |
+| Frontend `npm test` (vitest) | 183 passed, 12 files (new: format, dates, validation, errors, reports, store, diagnostics, first-run, language; locales and monitoring extended) |
+| `npm run typecheck` / `npm run build` | clean |
+| `cargo test` | 15 passed (was 12: database-error never retried, stable reason codes, user retry resets the budget) |
+| `npm run tauri build` | MSI **36.16 MiB**, NSIS **27.08 MiB** built; production bundle contains no mock code |
+| `desktop/scripts/validate-lifecycle.ps1` (scratch DB, packaged app) | **24 / 24** on the second run. The first run had 1 failure, "no duplicate sidecars", a one-shot process count taken right after the replacement sidecar appeared; not reproduced (second full run passed; a separate 30 s poll of the process count after a kill showed exactly one sidecar throughout). Treated as a script race, not confirmed as a product defect |
+| Visual layout | A *sample* of headless-Edge screenshots of the UI against synthetic data (Dashboard complete/partial/failed at 880x600 to 1120x740, Reports, Gaming, Settings tall, first-run in German, Dashboard in Persian RTL at 880 wide): no overlap or horizontal page overflow after one fix (stat-card labels were truncated at narrow widths; they now wrap). Not every page x size x language combination was captured, and **nothing was verified in the real WebView2**, see the checklist |
+
+### Final test counts
+
+**.NET: 389 passed** (Core 209, Storage 72, Hardware 11, Probe 97), 0 failed;
+was 347. Frontend 183 (was 43). Rust 15 (was 12).
+
+## Database and operational findings (Part M)
+
+- **WAL / checkpoint**: left on SQLite's default auto-checkpoint (no evidence
+  of a problem; a PASSIVE checkpoint is part of the user-triggered
+  maintenance and never blocks the recorder). **No VACUUM** is ever run: the
+  database uses `auto_vacuum=INCREMENTAL` and returns free pages in steps of
+  2048 pages, so maintenance cannot stall the recorder.
+- **Indexes**: hot queries verified by `EXPLAIN QUERY PLAN` tests (energy
+  buckets by time and session, gaps, raw samples, gaming by game/start/monitoring
+  session) -- all index searches. **No new index was needed.**
+- **Report cost, measured** on a synthetic year (35,040 buckets, 10 sessions,
+  scratch DB): statistics 2 ms, a day report 12 ms, a month report with daily
+  breakdown 9 ms, the 50-session list 36 ms, `quick_check` 5 ms. Nothing was
+  optimized because nothing was slow.
+- **Integrity**: `quick_check` + foreign-key check on demand (Settings -> Data).
+- **Migration failure**: each migration is transactional (verified: a forced
+  failure rolls back, `user_version` unchanged, data intact); a consistent
+  backup (`wattscope.db.pre-migration-vN.bak`) is made first; the sidecar then
+  exits with code 4, which the host never retries, and the UI explains it.
+- **Damaged persisted values** (retention, estimation settings, a price row)
+  fall back to defaults / are skipped with a log line instead of feeding the
+  maths or crashing.
+- **Retention**: raw samples (default 7 days, 0..3650) are pruned; 15-minute
+  totals, costs, gaps and sessions are kept. New: user-triggered deletion of
+  *finished* sessions older than >= 30 days, only after a preview and a
+  confirmation naming the exact session count; never the running session,
+  prices, settings, mappings or the database file. The database is never
+  deleted automatically and uninstalling does not remove it by default.
+
+## Performance and memory (Parts O, P)
+
+- **Renders / IPC**: previously three independent subscription sets (each
+  page mounted its own) and Settings and Gaming re-rendered on every tick.
+  Now one set of event listeners for the whole window; pages read slices;
+  Settings no longer re-renders per tick; Gaming re-renders per tick only in
+  its live card; the canvas chart never touches React state.
+- **Unbounded state**: none found. The chart history (300 points) is bounded
+  and now lives in the store (it used to be lost on navigation). Unit-tested:
+  capacity, newest-kept, no break between consecutive ticks, a break (not a
+  joined line) across a gap.
+- **Timers**: every poll goes through one visibility-gated hook; a hidden
+  window polls nothing and refreshes when shown. Gaming's 5 s state poll was
+  removed (the tick carries it). Reports poll only Today/this month/session list.
+- **Listener leaks**: the store's start/stop is tested to subscribe exactly
+  once per event and to unsubscribe everything.
+- **Memory, packaged build, scratch DB, unelevated, 1 s sampling, 60 s after a
+  15 s settle** (`measure-background.ps1`, single run):
+
+  | | Procs | Working set | Private |
+  |---|---|---|---|
+  | Host (Tauri) | 1 | 30.6 MiB | 6.8 MiB |
+  | WebView2 tree | 7 | 373 MiB | 192 MiB |
+  | Sidecar (.NET, LibreHardwareMonitor, 3 SQLite connections) | 1 | 96-103 MiB | 48-54 MiB |
+  | **Total, window visible** | 9 | **500 MiB** | **247 MiB** |
+  | Total, hidden in the tray | 9 | 504 MiB | 249 MiB |
+
+  M004 reported ~470-475 MiB (working set, same method). Working set counts
+  shared pages in every WebView2 process, so it overstates real use; private
+  memory is about half. Roughly three quarters of the total is the WebView2
+  runtime (browser, GPU, renderer, network and utility processes) -- framework
+  overhead WattScope cannot remove; the host is 31 MiB; the sidecar is the
+  self-contained .NET runtime plus sensor libraries. The ~25-30 MiB rise over
+  M004 is within single-run variation and the M005 detector's footprint. No
+  avoidable retention was found in review; **long-run (hours) growth was not
+  measured** (checklist F3). Hiding the window did not reduce the total
+  (WebView2 stays resident), but its CPU fell from 0.68 % to 0.03 % of a core.
+  No FPS impact is claimed.
+- Chart CPU, per-tick render counts and a profiler pass in the real WebView2
+  were not done (UNVERIFIED).
+
+## Localization, formatting, accessibility (Parts Q, T, U, V)
+
+- A test now scans every source file: **every literal `t("...")` key exists in
+  EN, DE and FA**, every dynamic key family is enumerated, **no unused key is
+  left**, placeholders match across languages, plural forms (`_one`/`_other`)
+  exist everywhere, German/Persian differ from English except identifiers,
+  Persian strings are in Persian script, and CPU/GPU/W/kWh stay Latin inside
+  Persian text. Terminology is centralised in `terms.*` (monitoring session,
+  gaming session, estimated system power, CPU package power, GPU board power,
+  partial estimate = "Partial (lower bound)", electricity cost).
+- Numbers/dates follow the language (German `1.234,6 W`, `02.10.2026`) with
+  Latin digits and Gregorian dates in every language; units never change.
+  Persisted values are machine-readable; prices are sent as exact decimal text.
+- Accessibility: tab strips with arrow keys (mirrored in RTL), native
+  `<dialog>` (focus trap, Esc, focus return; Cancel focused for destructive
+  actions), labelled fields with `aria-describedby`/`aria-invalid`, a visible
+  focus ring, contrast raised, status by glyph + word, reduced motion.
+  **No screen-reader, high-contrast or keyboard-only pass was run on the real
+  app** (checklist E4/E5).
+
+## Feature freeze classification (Part Z)
+
+**FEATURE COMPLETE.** Nothing further is to be started in this milestone.
+
+1. **RELEASE BLOCKER** -- none known. (The unverified items below become
+   blockers only if they fail.)
+2. **PRE-RELEASE VALIDATION** -- everything in `docs/PRE_RELEASE_CHECKLIST.md`
+   (real Warzone and a second game, FPS impact, Administrator Complete
+   sessions, MSI/NSIS install/upgrade/uninstall, shutdown/restart/logoff,
+   real-WebView2 layout and screen-reader pass, long-session growth, copy-of-real-database
+   open and deletion rehearsal).
+3. **OPTIONAL POST-RELEASE IMPROVEMENT** (not started, not promised):
+   Windows auto-start and a least-privilege sensor helper (so Complete CPU
+   monitoring does not need the whole app elevated); an in-app restore of a
+   `.bak`; export of reports to CSV; a configurable close-to-tray choice;
+   Persian-calendar display as an opt-in; a real chart hover/tooltip;
+   per-day hourly breakdown in Reports (needs 15-minute buckets exposed);
+   Gaming cost per game over time; code-signing of the installers.
+
+## Known limitations (Milestone 006)
+
+- The "Gaming sessions that started on this day" list is a list, not part of
+  the day's energy total (it is a subset of it, and Partial/Complete are not
+  merged).
+- Day/month reports attribute a 15-minute bucket to the local day of its start
+  (unchanged); a bucket straddling local midnight in a half-hour-offset zone is
+  attributed whole.
+- Dates for English use the US order (`10/02/2026`); there is no ISO option.
+- Estimation settings changes apply to the *next* monitoring session by design
+  (the running session keeps the values it was recorded with); the UI says so.
+- The pre-existing `SamplingEngineTests.AfterAStall_DoesNotBurstCatchUpTicks`
+  (Core, untouched) asserts a 10 ms tick spacing against a 20 ms interval and
+  failed under CPU load (3 of 4 runs while a browser and dev server were
+  running) and passed 4/4 when the machine was idle. A timing-sensitive test,
+  not a product defect; left as is.
 
 # Milestone 005
 
