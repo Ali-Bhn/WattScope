@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-02, during pre-release validation (feature freeze) on
+Last updated: 2026-10-03, during pre-release validation (feature freeze) on
 top of Milestone 006.
 
 ## Status
@@ -9,8 +9,13 @@ top of Milestone 006.
   soak, real-database rehearsal on copies, production UI/accessibility) --
   see "Pre-release validation" below. Phase 6 (Administrator Complete
   monitoring) and Phase 7 (real Warzone, unelevated) were run by the user and
-  PASSED. **No release blocker found.** Phases 8-12 (FPS, installers,
-  shutdown/restart/logoff, release candidate) not started.
+  PASSED. **No release blocker found.** Phase 8 (FPS) was cancelled. Phase 9
+  (installers) is **done**: a packaging defect in the NSIS installer was found
+  by audit, v0.1.0 now ships **MSI only**, and the MSI passed static
+  inspection and a real install / run / uninstall / reinstall / uninstall
+  lifecycle with the history preserved (details and what stays unverified in
+  "Phase 9" below). Phases 10-12 (shutdown/restart/logoff, release candidate)
+  not started.
 
 - **Milestone 006** -- Application Completion, UX Polish & Feature-Complete
   Candidate: **implemented; the application is FEATURE COMPLETE** (see the
@@ -52,16 +57,18 @@ Baseline `b8100aa`. No product feature was added in this phase; changes are
 limited to verified fixes, test infrastructure and documentation. Phases 1-5
 (automated gate, flaky test, soak, real-database rehearsal, production UI and
 accessibility) were run on 2026-10-02, followed the same day by the user-run
-Phase 6 (Administrator) and Phase 7 (real Warzone). **Phases 8-12 (FPS,
-installers, shutdown/restart/logoff, release candidate) have not been
-started** and stay UNVERIFIED in `docs/PRE_RELEASE_CHECKLIST.md`.
+Phase 6 (Administrator) and Phase 7 (real Warzone). Phase 8 (FPS) was
+cancelled, Phase 9 (installers, MSI only) was done on 2026-10-02/03. **Phases
+10-12 (shutdown/restart/logoff, release candidate) have not been started** and
+stay UNVERIFIED in `docs/PRE_RELEASE_CHECKLIST.md`.
 
 **Release blockers found: none.** Two defects were fixed (a test-script race
 and high-contrast marking); the known non-blocking issues are listed in the
 checklist.
 
-Every run below used a scratch database (`WATTSCOPE_DB`, path printed and
-checked first). The real database
+Every run of Phases 1-5 used a scratch database (`WATTSCOPE_DB`, path printed
+and checked first); Phases 6, 7 and 9 deliberately ran against the normal
+database, as their sections say. For Phases 1-5 the real database
 (`%LOCALAPPDATA%\WattScope\wattscope.db`, 159,744 bytes, modified
 2026-10-01T22:16:37Z, SHA-256 `87DC59BB...1B556E`) was hashed before the first
 step and is byte-identical after the last one; no `-wal`/`-shm`/backup file
@@ -283,6 +290,139 @@ sidecar's own `readAvgMs`/`readMaxMs` and the per-tick refresh counts (the
 process logger was not running during it); that the GPU node is not refreshed
 is shown by the unit tests, the unelevated timing runs above and the code, not
 by this run. The packaged installers contain the change.
+
+## Phase 9 -- production installer and installation lifecycle -- PASSED
+
+### Distribution decision: MSI only for v0.1.0
+
+Until this phase `bundle.targets` was `"all"`, so every build produced an MSI
+and an NSIS setup (the sizes recorded in earlier sections are of those
+builds). A read-only audit of the generated installer sources found:
+
+- **The NSIS setup installs, by default, into `%LOCALAPPDATA%\WattScope`** --
+  the folder that holds `wattscope.db`. Tauri has no configuration key for the
+  NSIS default folder (only a custom `.nsi` template). The setup was never
+  installed, so its behaviour there is read from the script, not observed.
+- The NSIS uninstaller offers a generic **"Delete the application data"**
+  checkbox that removes `%LOCALAPPDATA%\com.wattscope.desktop` (the WebView2
+  profile) and never the WattScope history -- misleading in both directions.
+- MSI and NSIS are alternative formats, not meant to be installed side by
+  side: the MSI takes its folder from the registry key the NSIS setup writes
+  and registers a second product; the NSIS setup removes an MSI install first.
+
+Decision (user, 2026-10-02): **v0.1.0 distributes the MSI only**
+(`desktop/src-tauri/tauri.conf.json`, `"targets": ["msi"]`; no other change).
+The MSI keeps the binaries in `C:\Program Files\WattScope` (not writable
+without elevation, which matters because WattScope may be launched elevated)
+and the per-user history in `%LOCALAPPDATA%\WattScope`; the database path is
+unchanged. Supporting both formats would need custom installer templates and
+adds lifecycle ambiguity. NSIS may be reconsidered if installing without
+administrator rights becomes a requirement.
+
+### Build and static inspection (2026-10-02) -- PASSED
+
+Built from `5ca97f7` plus the one-line setting above, with the documented
+procedure (`scripts/publish-probe.ps1`, then `npm run tauri build`); both
+succeeded and the build reported one bundle.
+
+| | |
+|---|---|
+| File | `WattScope_0.1.0_x64_en-US.msi`, 37,924,864 bytes (36.17 MiB) |
+| SHA-256 | `C0695D88D29A18746B2B5FF7EC989892D0A843F7D4055013B36321A1EA7F7526` |
+| Product / version / manufacturer | WattScope / 0.1.0 / `wattscope`; language 1033 |
+| Architecture, scope | x64; per machine (`ALLUSERS=1`), needs elevation |
+| ProductCode (new on every build) | `{6EBA3712-4EDA-4590-A6FA-CC208792CEB9}` |
+| UpgradeCode (Tauri default, derived from the product name) | `{F6A26AA7-10F8-5652-890E-BB809C7121AD}` |
+| Install folder | `C:\Program Files\WattScope` (a previous location in `HKCU\Software\wattscope\WattScope` would be reused; the key does not exist on this machine) |
+| Shortcuts | Start menu `WattScope\WattScope` and a desktop shortcut, both all-users; "Uninstall WattScope" in the install folder |
+| Upgrade | major upgrade of any version with the same UpgradeCode, downgrades allowed; no Repair/Modify in Add/Remove Programs |
+| Not present | service, scheduled task, Run entry, PATH/environment change, file association, launch condition |
+| WebView2 | if no runtime is registered, the installer downloads Microsoft's bootstrapper (needs internet) |
+| Signature | **unsigned** (MSI, host and sidecar) |
+
+Administrative extraction (`msiexec /a` into a scratch folder; nothing was
+registered) gave exactly two files:
+
+| File | Bytes | SHA-256 | Notes |
+|---|---|---|---|
+| `wattscope.exe` | 4,755,456 | `5D6DE348...714DCBCB` | x64 GUI, version 0.1.0; differs from `target/release/wattscope.exe` only in the three bytes of Tauri's bundle-type marker (`MSI` in the package, `UNK` in the build folder) |
+| `wattscope-probe.exe` | 82,139,068 | `F0B26CC8...25E115AF` | x64 console, product version `1.0.0+5ca97f7ccdaaf4f86d38fab5050c5ffb3549c92e`; byte-identical to the sidecar published in this build (the previous one, stamped `b51af36`, was `1E4C945C...`) |
+
+Production path: the frontend is embedded in the host (the asset names of this
+build's `dist/` are in the executable), the `tauri` crate was compiled with
+`custom_protocol` (`dev=false`), `dist/` has no `localhost:1420`, mock marker
+or source map, and nothing listened on port 1420. Actually running the
+installed app without development tooling belongs to the installation steps
+below.
+
+Before any installer was built or run, the real data was backed up to
+`C:\WattScopeBackup\phase9-20261002-212546\` (291 files, hashes verified;
+database SHA-256 `474C6BEA...1CA14146`, 282,624 bytes). Baseline read from a
+copy: schema 4, `integrity_check` ok, no foreign-key violation, 22 monitoring
+sessions (none Active), 1 gaming session, 0 game mappings, 2 price rows
+(0.35 EUR), `first_run_completed` set.
+
+Noted, not blocking: the sidecar's MSI component GUID is regenerated on every
+build (harmless with a major upgrade that removes the old product first); the
+manufacturer is shown as lowercase `wattscope`; the installer is English only.
+
+### Installation lifecycle (2026-10-02/03, manual steps by the user) -- PASSED
+
+That exact MSI (never rebuilt) was installed, used, uninstalled, reinstalled
+and uninstalled again on the development machine, one manual action at a
+time, against the **normal** database. After every action the state was
+inspected read-only; the database was only ever read from scratch copies.
+
+| Step | Observed |
+|---|---|
+| Install | UAC "unknown publisher" (unsigned); success. One product registered per machine; `C:\Program Files\WattScope` holds exactly `wattscope.exe`, `wattscope-probe.exe` (hashes identical to the extracted payload) and "Uninstall WattScope"; users have read/execute only. Start menu `WattScope\WattScope` and a Public Desktop shortcut point at the installed host. Add/Remove Programs: WattScope 0.1.0, `wattscope`, uninstall only. No service, task, Run entry or startup item. The installation itself did not touch the database |
+| Finish page | "Launch WattScope" is ticked by default and started the app, **unelevated**, although the installation was elevated |
+| First launch | One host, one sidecar (`--serve`), both from Program Files, using `%LOCALAPPDATA%\WattScope\wattscope.db` and the existing WebView2 profile; no other database or data folder appeared; no dev server involved |
+| Stop, then Start | Session #23 (19 s) ended `Stopped by user`; the sidecar stays alive, idle, by design. Start created exactly one new session, #24, in the same sidecar |
+| Monitoring (#24, unelevated) | 1,586 samples in 1,585.0 s = 1.0000 Hz, intervals 978-1,022 ms, 0 gaps. GPU (NVML) valid in every sample; CPU `ImplausibleZero` in every sample, stored as null, never 0. Partial 114.100 Wh = (GPU 290,433 J + 50 W x 1,585.0 s) / 0.9, equal to a recomputation from the raw samples to 0.6 J; Complete energy 0; cost withheld. The dashboard values the user read match the stored samples |
+| Close to tray / Open | Window hidden, tray icon stays, same host, sidecar and session, sampling uninterrupted; *Open WattScope* showed the same window and session |
+| Tray -> Exit while monitoring | #24 `Stopped (--serve exiting)`; host, sidecar and all six WebView2 processes gone; WAL checkpointed and removed; integrity ok |
+| Same MSI started again | Maintenance dialog with Change and Repair disabled and only **Remove** enabled; cancelled, nothing changed. **A same-version reinstall or repair is not offered by this installer** and was therefore not tested |
+| Uninstall (Settings, app not running) | Product registration, Add/Remove entry, Program Files folder, both shortcuts, Start-menu folder and `HKCU\Software\wattscope` removed; no data-removal option exists. **`%LOCALAPPDATA%\WattScope\wattscope.db` byte-identical** (SHA-256 unchanged), and the WebView2 profile `%LOCALAPPDATA%\com.wattscope.desktop` also kept. Nothing else in Program Files, the Public Desktop, the Start menu or `%LOCALAPPDATA%` changed |
+| Reinstall of the same MSI | Same registration, payload hashes and shortcuts as the first install; database still byte-identical |
+| Launch after reinstall | All 24 earlier sessions, the Call of Duty gaming session, prices and settings shown in the UI and unchanged row by row; no migration, no duplicate database; a normal new session #25 at 1 Hz |
+| Uninstall **while running** | Windows Installer listed "WattScope" and "WattScope.Probe" as in use; with "Automatically close applications..." the Restart Manager closed both. #25 ended **cleanly** (`Stopped (--serve exiting)`, WAL checkpointed, 0 gaps), no process was left, nothing was restarted afterwards, no reboot was requested and no pending file operation names WattScope. Database intact with 25 sessions |
+
+Final database: schema 4, `integrity_check` ok, no foreign-key violation, 25
+sessions (none Active), every row that existed before Phase 9 unchanged; the
+only additions are sessions #23-#25. Both safety backups
+(`C:\WattScopeBackup\phase9-20261002-212546`,
+`...\phase9-preuninstall-20261002-230731`) verify against their hash lists.
+WattScope is currently **not installed** on the development machine.
+
+Observations (no code or configuration changed for them):
+
+- One sample of session #25 arrived 0.58 s late (1,582 ms, then 424 ms) while
+  the machine was busy with other work; 593 of 595 intervals are within
+  50 ms of 1 s. It is far below the 5 s gap limit, so no gap was recorded.
+- During the launch after the reinstall, the WebView2 network process of
+  WattScope held one HTTPS connection to an address in a Microsoft range. The
+  page's content-security policy only allows the app's own content, and no
+  such connection existed in three checks of the first run. What it was for
+  was **not determined**; it is recorded as an observation of the WebView2
+  runtime, not as evidence of anything WattScope sends.
+- The sidecar's private memory was 39 MiB idle and about 50 MiB after 30
+  minutes of monitoring, flat over a one-minute window (the long soak, R1,
+  remains the place to judge growth).
+
+Known non-blockers: the MSI and both executables are **unsigned** (UAC shows
+"unknown publisher"); the Finish page launches the app by default; the same
+MSI offers uninstall only; the manufacturer is shown as lowercase
+`wattscope`; the installer is English only; the UpgradeCode is Tauri's
+default derived from the product name and is not pinned in the configuration.
+
+**Still UNVERIFIED:** upgrading from one version to a newer one (no second
+version exists; do it before the first update is distributed); SmartScreen
+on a copy downloaded from the internet (the tested file had no such mark); a
+machine without the WebView2 runtime or without internet; a standard
+(non-administrator) user and a second Windows account; an elevated launch of
+the *installed* copy (elevated runs were validated on the same build before
+packaging, Phase 6 and the S1 smoke test).
 
 ## Phase 3 -- long-session stability (soak)
 

@@ -17,7 +17,7 @@ anything not run there is marked **UNVERIFIED**.
 | 3 | Logoff / shutdown / restart | UNVERIFIED |
 | 4 | Administrator launch | **VERIFIED / PASSED** (2026-10-02, session #20, Complete with cost; `PROJECT_STATE.md` Phase 6) |
 | 5 | Persian / RTL visual check | **VERIFIED** on every page of the production app in the real WebView2 (2026-10-02, pre-release validation Phase 5 in `PROJECT_STATE.md`); a native reader has not reviewed the wording |
-| 6 | Installers | UNVERIFIED (packages build; installing/uninstalling was not run) |
+| 6 | Installers | **VERIFIED / PASSED** for the MSI (2026-10-02/03: install, run, uninstall, reinstall, uninstall while running; `PROJECT_STATE.md` Phase 9). Version-to-version upgrade, SmartScreen on a downloaded copy, a machine without WebView2, a standard user / second account and an elevated launch of the installed copy: UNVERIFIED |
 | 7 | Gaming session with a real game (Call of Duty / Warzone via Battle.net) | **UNVERIFIED** -- not run; the automated suite and the non-game real validation (`PROJECT_STATE.md`, Milestone 005) are done, but no real game was launched |
 
 All procedures use the packaged app (`desktop/src-tauri/target/release/wattscope.exe`
@@ -122,12 +122,18 @@ is deliberately not mirrored).
 
 ## 6. Installers
 
-- Install the NSIS setup and the MSI (separately, on a clean state): the app
-  launches, shows in the Start menu, runs as in section 2.
+- Install the MSI (v0.1.0 ships MSI only; the NSIS setup is no longer built,
+  see `PROJECT_STATE.md` Phase 9): the app launches, shows in the Start menu,
+  runs as in section 2.
 - Uninstall: WattScope's files and shortcuts are removed; no Windows Service,
   startup entry or scheduled task was ever created (check
   `Task Manager -> Startup`, `services.msc`); `%LOCALAPPDATA%\WattScope`
   (the monitoring history) is left in place.
+- The installer is unsigned: expect "unknown publisher" in the UAC prompt.
+  The last page starts WattScope unless "Launch WattScope" is unticked.
+- Starting the same MSI again offers *Remove* only (no repair). Uninstalling
+  while WattScope runs is supported: keep "Automatically close
+  applications"; decline a restart if one is offered (none was in Phase 9).
 
 ## 7. Gaming session (Call of Duty / Warzone through Battle.net)
 

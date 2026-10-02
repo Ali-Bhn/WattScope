@@ -93,8 +93,18 @@ npm install
 powershell -File scripts/publish-probe.ps1   # publishes the sidecar binary into src-tauri/binaries/
 
 npm run tauri dev                            # live-reloading dev build
-npm run tauri build                          # release installer, under src-tauri/target/release/bundle/
+npm run tauri build                          # release installer (MSI), under src-tauri/target/release/bundle/msi/
 ```
+
+v0.1.0 is distributed as an **MSI only** (`bundle.targets` is `["msi"]`). It
+is a per-machine MSI: the program is installed under
+`C:\Program Files\WattScope`, and installing needs UAC / administrator
+authorization. Each user's WattScope history stays under
+`%LOCALAPPDATA%\WattScope`, and uninstalling preserves it. The installer is
+not code-signed, so Windows shows "unknown publisher". Not validated yet:
+upgrading from one version to the next (there is only one version), and
+installing or running as a standard user or from a second Windows account --
+see `docs/PRE_RELEASE_CHECKLIST.md`, section C.
 
 `scripts/publish-probe.ps1` must be re-run whenever `WattScope.Probe` or
 anything it depends on (`WattScope.Core`/`Hardware`/`Storage`) changes --

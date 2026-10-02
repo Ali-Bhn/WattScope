@@ -27,7 +27,7 @@ implementation. Items added by that audit are marked *(added)*.
 | 0.1 | `dotnet test WattScope.slnx` | PASSED 2026-10-02: 394 (Core 214, Storage 72, Hardware 11, Probe 97) |
 | 0.2 | Frontend `npm test`, `npm run typecheck`, `npm run build` | PASSED 2026-10-02: 183 tests, 12 files; clean |
 | 0.3 | `cargo test` | PASSED 2026-10-02: 15 |
-| 0.4 | `npm run tauri build` (MSI + NSIS) | PASSED 2026-10-02 (builds; installing is section C) |
+| 0.4 | `npm run tauri build` (MSI; until Phase 9 the build also produced an NSIS setup) | PASSED 2026-10-02 (MSI + NSIS built at the time; MSI only since Phase 9; installing is section C) |
 | 0.5 | Production bundle contains no mock/dev code | PASSED 2026-10-02: one JS chunk, no mock markers, no source maps, no `devtools` feature |
 | 0.6 | Schema: a fresh database is created at version 4, integrity ok; `--selftest` | PASSED 2026-10-02: 29/29 |
 | 0.7 | `desktop/scripts/validate-lifecycle.ps1` (scratch DB, packaged app; run it on a desktop that is not otherwise in use) | PASSED 2026-10-02: 25/25 on three consecutive runs of the final build (see `PROJECT_STATE.md`) |
@@ -60,18 +60,26 @@ implementation. Items added by that audit are marked *(added)*.
 
 ## C. Installers
 
+**Distribution decision (2026-10-02, Phase 9): v0.1.0 ships the MSI only**
+(`bundle.targets` = `["msi"]`); reasons in `PROJECT_STATE.md`, Phase 9.
+Earlier entries that mention an NSIS build (0.4 and the milestone records) are
+historical. "Either installer" below now means the MSI.
+
 | # | Item | Status |
 |---|---|---|
-| C1 | MSI installs, launches, creates its shortcut, registers uninstall | UNVERIFIED |
-| C2 | NSIS installs, launches, creates its shortcut, registers uninstall | UNVERIFIED |
-| C3 | Upgrade over the previous build keeps the database (schema 4 opens; a pre-migration backup is only made when a migration is pending) | UNVERIFIED |
-| C4 | Uninstall removes the program but **keeps** `%LOCALAPPDATA%\WattScope\wattscope.db` | UNVERIFIED |
-| C5 | Reinstall after uninstall finds the old history | UNVERIFIED |
+| C0 | *(added)* MSI built from `5ca97f7` + the MSI-only setting; static inspection and administrative extraction (payload, sidecar commit stamp, metadata, no dev-server dependency) | PASSED 2026-10-02 (`PROJECT_STATE.md` Phase 9) |
+| C1 | MSI installs, launches, creates its shortcut, registers uninstall | PASSED 2026-10-02 (installed twice; Start menu and Public Desktop shortcuts; Add/Remove Programs entry; the Finish page launches the app unelevated by default) |
+| C2 | NSIS installs, launches, creates its shortcut, registers uninstall | NOT APPLICABLE: NSIS is not distributed for v0.1.0 (never installed; its default folder is the database folder) |
+| C3 | Upgrade over the previous build keeps the database (schema 4 opens; a pre-migration backup is only made when a migration is pending) | UNVERIFIED -- no second version exists to upgrade from or to. Starting the same MSI again offers **Remove only** (no repair, no same-version reinstall). Verify a real version-to-version upgrade before the first update is distributed |
+| C4 | Uninstall removes the program but **keeps** `%LOCALAPPDATA%\WattScope\wattscope.db` | PASSED 2026-10-02 (database byte-identical after the uninstall) and again 2026-10-03 (uninstall while running: every earlier row unchanged, only the running session's own rows added); the WebView2 profile `%LOCALAPPDATA%\com.wattscope.desktop` is kept too; the MSI has no data-removal option |
+| C5 | Reinstall after uninstall finds the old history | PASSED 2026-10-02: 24 sessions, gaming history, prices and settings unchanged row by row and shown in the UI; no migration, no duplicate database |
 | C6 | WebView2 runtime missing on a clean machine: installer behaviour | UNVERIFIED |
-| C7 | *(added)* The installed folder contains the sidecar (`wattscope-probe.exe`) and the installed app starts it | UNVERIFIED |
-| C8 | *(added)* No startup entry, scheduled task or service is created by either installer (by design WattScope does not auto-start) | UNVERIFIED |
-| C9 | *(added)* No orphan `wattscope` / `wattscope-probe` / WebView2 process after uninstall; uninstalling while the app runs | UNVERIFIED |
-| C10 | *(added)* The installers are unsigned: record the SmartScreen / UAC publisher prompt a user will see (signing is a deferred post-release item) | UNVERIFIED |
+| C7 | *(added)* The installed folder contains the sidecar (`wattscope-probe.exe`) and the installed app starts it | PASSED 2026-10-02: sidecar stamped `5ca97f7`, hash identical to the build; one host, one sidecar from `C:\Program Files\WattScope`; 26 minutes at 1.0000 Hz, 0 gaps, arithmetic verified |
+| C8 | *(added)* No startup entry, scheduled task or service is created by either installer (by design WattScope does not auto-start) | PASSED 2026-10-02 for the MSI (checked after the first install and after both uninstalls) |
+| C9 | *(added)* No orphan `wattscope` / `wattscope-probe` / WebView2 process after uninstall; uninstalling while the app runs | PASSED 2026-10-03: Windows Installer listed WattScope and WattScope.Probe as in use, the Restart Manager closed both, the session ended as a clean stop, nothing was restarted, no reboot requested, database intact |
+| C10 | *(added)* The installers are unsigned: record the SmartScreen / UAC publisher prompt a user will see (signing is a deferred post-release item) | PARTLY 2026-10-02: UAC shows "unknown publisher" for the MSI (install and uninstall). **SmartScreen on a downloaded copy is UNVERIFIED** (the tested file had no internet mark) |
+| C11 | *(added)* Install and run as a standard (non-administrator) user; a second Windows account on the same machine (per-machine program, per-user history) | UNVERIFIED (needs another account) |
+| C12 | *(added)* *Run as administrator* on the **installed** copy (Complete monitoring from `C:\Program Files\WattScope`) | UNVERIFIED (B1 and the S1 smoke test ran the same build elevated from the build folder, not the installed copy) |
 
 ## D. Windows session events
 
@@ -114,7 +122,7 @@ implementation. Items added by that audit are marked *(added)*.
 | # | Item | Status |
 |---|---|---|
 | G1 | Final automated regression on the candidate commit (section 0) | UNVERIFIED |
-| G2 | Final MSI/NSIS built from that commit; SHA-256 recorded | UNVERIFIED |
+| G2 | Final MSI built from that commit (MSI only, see section C); SHA-256 recorded | UNVERIFIED |
 | G3 | One product version everywhere (the sidecar currently stamps sessions with its assembly version `1.0.0.0`; the app is `0.1.0`) | UNVERIFIED -- known inconsistency, see Known issues |
 | G4 | README / release notes / known limitations updated | UNVERIFIED |
 
