@@ -22,6 +22,16 @@ function Use-ScratchDatabase([string]$Name) {
     return $db
 }
 
+# The sidecar is `wattscope-probe.exe --serve`. The validation scripts also run the same executable as a
+# short-lived CLI (`--sessions`, `--gaming`), and such a process can still be visible for a moment after its
+# output was read. Counting processes by name therefore mistakes a CLI call for a (second, or a restarted)
+# sidecar; the sidecar is identified by its command line instead.
+function Get-WattScopeSidecar {
+    @(Get-CimInstance Win32_Process -Filter "Name='wattscope-probe.exe'" |
+        Where-Object { $_.CommandLine -match '(^|\s)--serve(\s|$)' } |
+        ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue })
+}
+
 function Assert-NoWattScopeRunning {
     $running = @(Get-Process -Name "wattscope", "wattscope-probe" -ErrorAction SilentlyContinue)
     if ($running.Count -gt 0) {

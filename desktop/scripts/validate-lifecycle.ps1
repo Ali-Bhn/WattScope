@@ -57,7 +57,7 @@ function Check($name, [bool]$ok, $detail = "") {
 }
 
 function App { ,@(Get-Process -Name "wattscope" -ErrorAction SilentlyContinue) }
-function Sidecar { ,@(Get-Process -Name "wattscope-probe" -ErrorAction SilentlyContinue) }
+function Sidecar { ,@(Get-WattScopeSidecar) }   # by command line, never by name: the --sessions CLI below is the same exe
 function Sessions {
     $ErrorActionPreference = "SilentlyContinue"   # the CLI logs recovery warnings to stderr; that is not a failure here
     $lines = & $ProbeExe --sessions 2>$null | Out-String -Stream

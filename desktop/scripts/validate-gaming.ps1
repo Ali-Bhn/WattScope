@@ -31,6 +31,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "_scratch-db.ps1")   # Get-WattScopeSidecar, Assert-NoWattScopeRunning
+Assert-NoWattScopeRunning
 $AppExe = (Resolve-Path $AppExe).Path
 $ProbeExe = (Resolve-Path $ProbeExe).Path
 $results = New-Object System.Collections.Generic.List[object]
@@ -61,7 +63,7 @@ function WaitFor([scriptblock]$cond, [int]$seconds = 20) {
     return $false
 }
 function App { ,@(Get-Process -Name "wattscope" -ErrorAction SilentlyContinue) }
-function Sidecar { ,@(Get-Process -Name "wattscope-probe" -ErrorAction SilentlyContinue) }
+function Sidecar { ,@(Get-WattScopeSidecar) }   # by command line, never by name: the Probe CLI below is the same exe
 
 # ---- isolated environment -------------------------------------------------
 if (Test-Path $WorkDir) { Remove-Item -Recurse -Force $WorkDir }
