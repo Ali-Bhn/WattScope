@@ -149,6 +149,11 @@ Stop-Process -Id $app.Id -Force       # simulates a host crash / forced terminat
 Check "the sidecar notices the host is gone and exits by itself" (WaitFor { (Sidecar).Count -eq 0 } 20)
 $final = (Sessions | Where-Object { $_.Id -eq $sid })
 Check "the session was closed cleanly (Stopped, not left Active/Interrupted)" ($final.Status -eq "Stopped") ("session #$sid = $($final.Status)")
+# The script itself creates exactly two sessions (the first launch and the relaunch). The app window takes the
+# foreground while this runs, so on a desktop that is in use a stray click or keystroke can reach it (Retry, Start
+# monitoring) and start another one; that would invalidate the run, so it is reported instead of going unnoticed.
+$allSessions = @(Sessions)
+Check "no session other than the two this script starts (no outside input reached the window)" ($allSessions.Count -eq 2) ("sessions: " + (($allSessions | ForEach-Object { "#$($_.Id)=$($_.Status)" }) -join " "))
 
 Write-Host "`n== Summary =="
 $results | Format-Table -AutoSize | Out-String | Write-Host

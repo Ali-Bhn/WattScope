@@ -1,9 +1,15 @@
 # Project State
 
-Last updated: 2026-10-02, after Milestone 006 (application completion, UX
-polish, feature-complete candidate) on top of Milestone 005.
+Last updated: 2026-10-02, during pre-release validation (feature freeze) on
+top of Milestone 006.
 
 ## Status
+
+- **Pre-release validation**: Phases 1-5 done (automated gate, flaky test,
+  soak, real-database rehearsal on copies, production UI/accessibility) --
+  see "Pre-release validation" below. **No release blocker found.** Phases
+  6-12 (Administrator, real Warzone, FPS, installers, shutdown/restart/logoff,
+  release candidate) not started.
 
 - **Milestone 006** -- Application Completion, UX Polish & Feature-Complete
   Candidate: **implemented; the application is FEATURE COMPLETE** (see the
@@ -41,7 +47,208 @@ polish, feature-complete candidate) on top of Milestone 005.
 # Pre-release validation (feature freeze)
 
 Baseline `b8100aa`. No product feature was added in this phase; changes are
-limited to verified fixes, test infrastructure and documentation.
+limited to verified fixes, test infrastructure and documentation. Phases 1-5
+(automated gate, flaky test, soak, real-database rehearsal, production UI and
+accessibility) were run on 2026-10-02. **Phases 6-12 (Administrator, real
+Warzone, FPS, installers, shutdown/restart/logoff, release candidate) have not
+been started** and stay UNVERIFIED in `docs/PRE_RELEASE_CHECKLIST.md`.
+
+**Release blockers found: none.** Two defects were fixed (a test-script race
+and high-contrast marking); the known non-blocking issues are listed in the
+checklist.
+
+Every run below used a scratch database (`WATTSCOPE_DB`, path printed and
+checked first). The real database
+(`%LOCALAPPDATA%\WattScope\wattscope.db`, 159,744 bytes, modified
+2026-10-01T22:16:37Z, SHA-256 `87DC59BB...1B556E`) was hashed before the first
+step and is byte-identical after the last one; no `-wal`/`-shm`/backup file
+appeared next to it.
+
+## Phase 1 -- automated release gate
+
+| Check | Result |
+|---|---|
+| HEAD / tree at the start | `b8100aa`, clean |
+| `dotnet test WattScope.slnx` | baseline **389** passed; **394** after Phase 2 (Core 214, Storage 72, Hardware 11, Probe 97), 0 failed |
+| Frontend `npm test` | **183** passed, 12 files (17 of them the localization completeness suite: every `t()` key in EN/DE/FA, no unused key, placeholders, plurals, Persian script) |
+| `npm run typecheck`, `npm run build` | clean |
+| `cargo test` | **15** passed |
+| Sidecar publish + `npm run tauri build` | MSI 36.17 MiB, NSIS 27.07 MiB |
+| Production configuration | release profile (`lto`, `panic=abort`), no `devtools` feature, CSP set, the only capability is running the bundled sidecar |
+| Mock/dev code excluded | one JS chunk; 0 hits for `mockIPC`, `installMock`, `VITE_MOCK`, `localhost:1420`, `sourceMappingURL`, `mock` in `dist/` |
+| Schema | a fresh scratch database is created at **version 4**, integrity ok; `--selftest` 29/29 |
+| Migration tests | 7 (fresh -> latest, M004 -> v4 keeps history, v3 repair, backup made only when a migration is pending, failed migration rolled back) -- part of the .NET suite |
+| `validate-lifecycle.ps1` (packaged app, scratch DB) | **25/25 on three consecutive runs of the final build** after the script fixes below (24/24 x3 on the previous build before the 25th check was added) |
+| Final regression after all fixes | .NET 394, frontend 183, typecheck clean, Rust 15 |
+
+### The lifecycle-script failures (investigated, not re-run until green)
+
+The first two runs each had one failure, a different one each time
+("restarts are bounded", then "no duplicate sidecars"). An independent
+process watcher (PID, parent and command line every ~250 ms) showed:
+
+- **Script defect, fixed.** The script counted processes *named*
+  `wattscope-probe` as "the sidecar", but it also runs that executable as a
+  CLI (`--sessions`). A CLI process still visible for a moment was taken for a
+  restarted sidecar, so "a new sidecar appears" passed before the real one
+  existed and the next check then counted 0. At that moment there was **no**
+  second `--serve` process. The sidecar is now identified by its command line
+  (`Get-WattScopeSidecar`). This is the same failure M006 recorded as "not
+  reproduced".
+- **Product behaviour confirmed correct.** In every instrumented run the
+  spawn sequence was exactly `--serve`, three `--serve --resume` (back-off
+  1/2/4 s), give-up after the 4th crash, and never two sidecars at once. A
+  separate run with no CLI calls showed no respawn for 75 s after the give-up.
+
+### The fresh session after a give-up (investigated; cause not proven)
+
+In the very first run a *fresh* session (#2, started 12:48:46, i.e. a
+`--serve` without `--resume`) appeared about 9 s after the host had given up
+restarting the sidecar. The user confirmed they did not knowingly click Retry
+or tray Start. Investigation, without changing production code:
+
+- **Code audit.** A crash restart can only pass `--resume` or `--paused`
+  (`spawn_args(_, false)`); `EnergyMonitor.Resume` never creates a session and
+  a paused sidecar creates none. A fresh session needs `spawn_args(_, true)`,
+  reached only from application start-up and from `tray_start` (tray *Start*
+  or the banner's *Retry*), or a `start_monitoring` request, sent only by the
+  Start buttons. The host starts no timer or background task besides the
+  bounded restart delay (1/2/4 s). No automatic path was found.
+- **Reproduction attempts: 0 of 19.** The exact original script from `b8100aa`
+  replayed 5 times under a process watcher (PID, parent, command line); the
+  crash-loop sequence alone 6 times; 5 + 3 instrumented runs of the fixed
+  script. Every run: `--serve`, three `--serve --resume`, give-up, nothing
+  afterwards. (The script's own "duplicate sidecar" race *did* reproduce, 3 of
+  5 replays.)
+- **Evidence in that run's own database.** `first_run_completed` was written
+  at 12:47:53.7, 2.1 s after launch. Only activating a button of the first-run
+  dialog writes it (`complete_first_run`); nothing in the script or the app
+  does so by itself, and it is *not* set in the 20 other untouched runs. So
+  **real input events reached the test window during that run**. The same
+  happened in 3 of the 5 replays later the same day (at +0.4 s, +2.9 s, +3.1 s),
+  while the desktop was in interactive use (foreground windows observed during
+  the tests: a browser and Task Manager).
+- **Mechanism.** WattScope takes the foreground when it is launched and again
+  when a second launch shows the window (the script does both), with the
+  dialog's primary button focused: a keystroke or click meant for another
+  application lands on it. With the first-run dialog gone, the Retry button
+  that appears on give-up is live.
+- **Retry reproduces the signature exactly** (verified in Phase 5): one fresh
+  `--serve`, one new session, one sidecar.
+
+**Conclusion.** Most probably outside input reached the focus-taking test
+window (proven for the first-run button in that run; not proven for the Retry
+activation itself, which was not logged). No lifecycle defect was
+demonstrated and no automatic path exists in the code, so production code was
+not changed. The lifecycle script now ends with a check that no session exists
+other than the two it starts, so such contamination fails the run visibly:
+**25/25 on three consecutive runs of the final build.** Recommendation: run
+it on a desktop that is not otherwise in use.
+
+## Phase 3 -- long-session stability (soak)
+
+`desktop/scripts/soak.ps1` (new, reproducible): packaged app, scratch
+database, dashboard visible, 1 s sampling, one sample of every process group
+per minute, trends by least squares after a 10-minute warm-up. **110.2
+minutes** were run; a multi-hour run is still **pending** (`soak.ps1 -Minutes
+240`, checklist F3).
+
+| After warm-up (100 samples) | First | Last | Min | Max | Slope / hour |
+|---|---|---|---|---|---|
+| Host private MiB | 6.95 | 8.60 | 6.89 | 8.66 | +0.48 |
+| Host handles / threads | 357 / 42 | 357 / 40 | | 359 / 42 | 0 |
+| WebView2 processes | 7 | 7 | 7 | 7 | 0 |
+| WebView2 tree private MiB | 189.3 | 203.3 | 188.7 | 204.9 | +5.8 |
+| WebView2 tree working set MiB | 379.0 | 348.7 | 340.5 | 385.4 | -22.5 |
+| WebView2 tree handles | 3303 | 3366 | 3288 | 3381 | +51 |
+| Sidecar private MiB | 56.1 | 59.4 | 55.1 | 59.5 | +1.7 |
+| Sidecar working set MiB | 106.9 | 86.0 | 83.1 | 109.3 | -15.7 |
+| Sidecar handles / threads | 492 / 14 | 489 / 11 | 480 / 11 | 510 / 14 | 0 |
+| Total processes | 9 | 9 | 9 | 9 | 0 |
+| Database file KiB | 4 | 252 | | | +153 |
+| WAL KiB | 1203 | 4035.5 | | 4035.5 | plateau from minute ~35 |
+
+- **Page (read every 5 min through the DevTools port, after a forced GC):**
+  JS heap 2.5-2.9 MiB with no trend, **DOM nodes 236 and event listeners 151
+  at every one of 22 readings**, one document. No unbounded frontend history.
+- **Sampling:** 6,300 raw samples in 6,300 s (1.000 /s), 0 gaps, one session.
+- **Provider read latency** (sidecar's own statistics, 6,316 samples): average
+  79.8 ms, maximum 426 ms. **Database flush:** 597 flushes, 0 failures,
+  average 0.58 ms, maximum 5.9 ms.
+- **CPU** (average after warm-up, % of one core): host 0.05, WebView2 0.64,
+  sidecar 1.53.
+- **Database growth:** ~38 bytes per raw sample (252 KiB for 6,610 samples);
+  the WAL stops at SQLite's auto-checkpoint size (~4 MiB) and stays there.
+  Integrity ok; the sidecar exited by itself when the host was ended.
+- **Reading.** No process, handle or thread leak; no frontend growth. Working
+  sets fall. Private memory rises slowly: the WebView2 tree stepped from ~194
+  to ~200 MiB around minute 55 and then stayed at 200-203 MiB (a step, not a
+  ramp; the JS heap did not move), and the sidecar gained ~3 MiB in 100
+  minutes, which is within what the .NET GC keeps before a gen-2 collection.
+  **110 minutes cannot rule out a slow leak of that size**; that is exactly
+  what the pending multi-hour run is for.
+- Code review of long-lived collections found none unbounded (process and
+  detection caches are rebuilt to the live processes each poll; pending
+  samples are flushed every 10 s; chart history is capped at 300 points).
+
+## Phase 4 -- real-database safety rehearsal (on copies only)
+
+The real database was copied by file copy (the copies' SHA-256 equals the
+original's) and never opened. 43 checks through the release sidecar's own
+protocol -- the requests the Settings and Reports pages send -- plus an
+independent SQLite reader:
+
+| | Result |
+|---|---|
+| Copy A (unmodified): opens at schema 4 without migrating, no backup created; integrity ok; 19 sessions, 1,589 raw samples, 20 energy totals, 2 prices | pass |
+| Reports on the copy: session #1 (elevated, Complete), #18 (sleep test, Partial), a day, both months, price history | pass |
+| Deletion guard: preview "older than 30 days" finds 0 (every real session is newer); an age under 30 days, a missing confirmation and a wrong count are all refused; a confirmed delete of 0 deletes nothing; every row identical afterwards | pass |
+| Retention 7 -> 1 day + maintenance: exactly the 300 raw samples older than one day were pruned (session #1's); sessions, energy totals, price splits, gaps, prices identical to an untouched copy (per-table comparison); integrity ok | pass |
+| Copy B (sessions #1-#12 moved 60 days back **on the copy** so they become eligible): preview = 12 sessions, 12 energy totals, 1 gap, exactly what an independent count gives; preview deletes nothing | pass |
+| A stale confirmation (11) is refused and deletes nothing; the confirmed delete (12) removes exactly the previewed scope; no row of a deleted session is left in any table | pass |
+| Sessions #13-#19 with all dependent rows and both prices byte-identical; the report for #18 identical to the one from the unmodified copy; integrity and foreign keys ok | pass |
+| The original: size, modification time and SHA-256 unchanged | pass |
+
+One of the 43 checks failed as first written: it compared `app_setting` too,
+which is where the new retention value is stored. The per-table comparison
+above replaced it. The same deletion was then repeated through the **real UI**
+(Phase 5): preview "6 sessions, 5 energy totals", cancel by Enter and by
+Escape delete nothing, confirm removes exactly that; sessions #1 and #8-#19
+identical to the untouched copy.
+
+## Phase 5 -- production UI and accessibility (real WebView2)
+
+The **production `wattscope.exe`** was driven in its real WebView2 (Edge
+154.0.4258.48) through the WebView2 remote-debugging port -- an environment
+variable on launch, no change to the app -- with a scratch database (empty, or
+a copy of the real one) and a scratch WebView2 profile, so the real language
+preference was never touched. This replaces the M006 headless-Edge mock
+screenshots. About 850 programmatic checks, plus screenshots read by eye.
+
+| Area | Result |
+|---|---|
+| Layout: 7 views (Dashboard, Gaming, Reports x4, Settings) x EN/DE/FA x 880x600, 1120x740, 1600x1000, maximized (real window resizes) = 84 combinations, plus scrolled Settings/Reports | no horizontal overflow, no truncated text, no raw i18n key / `undefined` / `NaN`, text contrast >= 4.5:1 everywhere |
+| Persian / RTL | `dir=rtl`, sidebar mirrored; no Persian digits (Latin by design); all numeric values, times and dates render left-to-right; units Latin; no untranslated English sentences |
+| First run (fresh database) | modal `<dialog>`, labelled, fits at 880x600 in all three languages; focus on the primary action; Tab trapped; Escape hides it for the session only; completion persisted |
+| Empty states | Gaming and all four Reports tabs on a fresh database: explained, never `0` |
+| Keyboard | every control on every page reachable by Tab with a visible focus ring and scrolled into view; navigation by Enter/Space with `aria-current`; tab strips with arrows/Home/End (mirrored in RTL), one tab stop |
+| Dialogs | past-price and delete-history: modal, focus starts on Cancel, Tab trapped, Escape/Enter-on-Cancel change nothing, fit at 880x600 |
+| Settings forms | 15 invalid inputs rejected with `aria-invalid` and a linked error (numeric fields inline, the price on submit); nothing sent to the backend; save round trip; German decimal comma accepted |
+| Honesty rules | unelevated: Partial with `>=`, CPU `--`, cost withheld; Complete and Partial never merged; a Partial lower-bound cost only where labelled as such |
+| Gaming with content | a manual session (stand-in name): live card Partial, no cost; ended by keyboard; one gaming session, monitoring session unaffected; listed under Today |
+| Error states | sidecar killed: "restarting" notice (role=status), automatic `--resume`, one Active session; crash loop: localized failure (role=alert) with Retry in EN/DE/FA; Reports/Gaming/Settings show a readable message, no stack trace; Retry restores one sidecar and one new session; integrity ok after 5 injected crashes |
+| Accessibility tree | every interactive control named; one `main`, named navigation landmarks; one `h1`, no skipped heading level; chart canvas has a text alternative; status glyphs hidden from assistive technology (the word carries the meaning); per-second readings are not in a live region |
+| High DPI | device pixel ratio 1.25 / 1.5 / 2: chart canvas backed at the display density, no overflow |
+| Reduced motion | transitions effectively off |
+| High contrast (forced colours) | **defect found and fixed**: the open page and the selected report tab had no visible mark; they now use the system selection colours; re-verified |
+
+Limits of this pass, stated plainly: **no real screen reader (NVDA/Narrator)
+was run**; Windows high-contrast themes and 125/150 % scaling were *emulated*
+in the real engine, the Windows settings were not switched; the native tray
+menu cannot be driven this way; a native Persian reader has not reviewed the
+wording. Two checks first failed for reasons in the check itself (page focus
+lost after a debugger-triggered reload; regular expressions mangled in a
+template string) and were re-run correctly; they are not counted as findings.
 
 ## Phase 2 -- the timing-sensitive sampling test
 

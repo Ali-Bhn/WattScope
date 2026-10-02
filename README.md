@@ -115,9 +115,11 @@ and no cost for an incomplete estimate) on machines where it needs elevation
 limitation, with automatic startup and a least-privilege privileged helper
 intentionally deferred (`docs/ARCHITECTURE.md`, "Privilege model").
 
-Lifecycle and performance checks against the real packaged app:
-`desktop/scripts/validate-lifecycle.ps1` and `desktop/scripts/measure-background.ps1`
-(both launch the real app but record into a **scratch** database via
+Lifecycle, performance and long-session checks against the real packaged app:
+`desktop/scripts/validate-lifecycle.ps1`, `desktop/scripts/measure-background.ps1`
+and `desktop/scripts/soak.ps1 -Minutes 240` (memory, handles, CPU and database
+growth sampled over time, with per-hour trends)
+(all launch the real app but record into a **scratch** database via
 `WATTSCOPE_DB` and refuse to run while WattScope is already running; never
 point validation at `%LOCALAPPDATA%\WattScope\wattscope.db`). To look at the
 UI without a backend (screenshots, layout checks): `npx vite build --mode mock`

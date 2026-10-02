@@ -16,7 +16,7 @@ anything not run there is marked **UNVERIFIED**.
 | 2 | System tray | **Partly verified**: only *Exit WattScope* was exercised (during procedure 1). Icon, tooltip, item states/live text, Start/Stop/Open/Settings, menu language: UNVERIFIED |
 | 3 | Logoff / shutdown / restart | UNVERIFIED |
 | 4 | Administrator launch | UNVERIFIED |
-| 5 | Persian / RTL visual check | Verified on a real-window screenshot of the Settings page (`PROJECT_STATE.md`); the other pages were not re-inspected |
+| 5 | Persian / RTL visual check | **VERIFIED** on every page of the production app in the real WebView2 (2026-10-02, pre-release validation Phase 5 in `PROJECT_STATE.md`); a native reader has not reviewed the wording |
 | 6 | Installers | UNVERIFIED (packages build; installing/uninstalling was not run) |
 | 7 | Gaming session with a real game (Call of Duty / Warzone via Battle.net) | **UNVERIFIED** -- not run; the automated suite and the non-game real validation (`PROJECT_STATE.md`, Milestone 005) are done, but no real game was launched |
 
