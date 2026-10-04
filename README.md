@@ -119,6 +119,10 @@ Details: [`docs/GAMING.md`](docs/GAMING.md).
 
 ---
 
+## License
+
+WattScope is licensed under the Apache License 2.0. See [LICENSE](LICENSE).
+
 # For developers
 
 Implementation status and validation history: `docs/PROJECT_STATE.md`;

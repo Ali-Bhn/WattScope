@@ -19,11 +19,11 @@ top of Milestone 006.
   fabricated time or energy, no self-start; sessions ended by Windows are
   recovered as Interrupted ("Phase 10" below). Phase 11 (the short pre-RC
   items R3-R7 and the product version, G3) is **done** ("Phase 11" below).
-  Phase 12 (the 4-hour soak, R1) is **done** and PASSED on `d472211`
+  Phase 12 (the 4-hour soak, R1) is **done** and PASSED on `8faec3a`
   ("Phase 12" below). Phase 13 (the final unattended lifecycle run, R2) is
   **done** and PASSED on the same binaries ("Phase 13" below).
   Phase 14 (the final automated regression, G1) is **done** and PASSED on
-  `d472211` ("Phase 14" below).
+  `8faec3a` ("Phase 14" below).
   Phase 15 (the final MSI, G2) is **done** and PASSED ("Phase 15" below).
   Phase 16 (the release documentation, G4) is **done** and PASSED ("Phase 16"
   below). **All required gates are complete; no release blocker; WattScope
@@ -66,7 +66,7 @@ top of Milestone 006.
 
 # Pre-release validation (feature freeze)
 
-Baseline `b8100aa`. No product feature was added in this phase; changes are
+Baseline `5228fe1`. No product feature was added in this phase; changes are
 limited to verified fixes, test infrastructure and documentation. Phases 1-5
 (automated gate, flaky test, soak, real-database rehearsal, production UI and
 accessibility) were run on 2026-10-02, followed the same day by the user-run
@@ -95,7 +95,7 @@ appeared next to it.
 
 | Check | Result |
 |---|---|
-| HEAD / tree at the start | `b8100aa`, clean |
+| HEAD / tree at the start | `5228fe1`, clean |
 | `dotnet test WattScope.slnx` | baseline **389** passed; **394** after Phase 2 (Core 214, Storage 72, Hardware 11, Probe 97), 0 failed |
 | Frontend `npm test` | **183** passed, 12 files (17 of them the localization completeness suite: every `t()` key in EN/DE/FA, no unused key, placeholders, plurals, Persian script) |
 | `npm run typecheck`, `npm run build` | clean |
@@ -141,7 +141,7 @@ or tray Start. Investigation, without changing production code:
   or the banner's *Retry*), or a `start_monitoring` request, sent only by the
   Start buttons. The host starts no timer or background task besides the
   bounded restart delay (1/2/4 s). No automatic path was found.
-- **Reproduction attempts: 0 of 19.** The exact original script from `b8100aa`
+- **Reproduction attempts: 0 of 19.** The exact original script from `5228fe1`
   replayed 5 times under a process watcher (PID, parent, command line); the
   crash-loop sequence alone 6 times; 5 + 3 instrumented runs of the fixed
   script. Every run: `--serve`, three `--serve --resume`, give-up, nothing
@@ -221,7 +221,7 @@ windows).
 |---|---|
 | One host, one owned sidecar, unelevated | `wattscope.exe` started by `explorer.exe`, one `wattscope-probe.exe` child; monitoring session #21 Partial (CPU unavailable, GPU measured) |
 | Battle.net alone is not a game | `Battle.net.exe` (`C:\Program Files (x86)\Battle.net\`) with six child processes and `Agent.exe` open alone 16:47:40 -> 16:53:50 (6 min); no gaming session, no candidate reported. Spotify, Photos, Snipping Tool and Edge started meanwhile and were not detected |
-| **Real executable identity** | **`cod.exe`**, `E:\GAMES\Battlenet\Call of Duty\_retail_\cod.exe`; parent chain `Battle.net.exe` -> `bootstrapper.exe` (same folder) -> `cod.exe` |
+| **Real executable identity** | **`cod.exe`**, `<game-library>\Call of Duty\_retail_\cod.exe`; parent chain `Battle.net.exe` -> `bootstrapper.exe` (same folder) -> `cod.exe` |
 | Helpers do not become games | `bootstrapper.exe`, `bootstrapperCrashHandler.exe`, `codCrashHandler.exe`, `CODBrokerService.exe` (a Windows service; path not readable unelevated), `dxdiag.exe`, about 20 short-lived `nvngx_update.exe` children of `cod.exe`: no session from any of them |
 | Automatic detection, no mapping | detection source `KnownCatalog` ("Call of Duty"); `game_mapping` empty before and after |
 | Detection latency | process first logged 16:53:52 (2 s resolution); session dated from first sight, 16:53:57 -- within the 5 s poll interval. The LIVE card was seen by the user; the moment of confirmation (20 s delay) was not timed |
@@ -272,7 +272,7 @@ are unfiltered. Interval, timestamps, gap detection, arithmetic, completeness
 and persistence are untouched.
 
 Measured on this machine, unelevated, sidecar alone (`--serve`) on scratch
-databases, published single-file binaries of `b51af36` and of this change:
+databases, published single-file binaries of `38b40a6` and of this change:
 
 | | Before | After |
 |---|---|---|
@@ -338,7 +338,7 @@ administrator rights becomes a requirement.
 
 ### Build and static inspection (2026-10-02) -- PASSED
 
-Built from `5ca97f7` plus the one-line setting above, with the documented
+Built from `f634235` plus the one-line setting above, with the documented
 procedure (`scripts/publish-probe.ps1`, then `npm run tauri build`); both
 succeeded and the build reported one bundle.
 
@@ -373,7 +373,7 @@ installed app without development tooling belongs to the installation steps
 below.
 
 Before any installer was built or run, the real data was backed up to
-`C:\WattScopeBackup\phase9-20261002-212546\` (291 files, hashes verified;
+`<backup-directory>\phase9-20261002-212546\` (291 files, hashes verified;
 database SHA-256 `474C6BEA...1CA14146`, 282,624 bytes). Baseline read from a
 copy: schema 4, `integrity_check` ok, no foreign-key violation, 22 monitoring
 sessions (none Active), 1 gaming session, 0 game mappings, 2 price rows
@@ -408,7 +408,7 @@ inspected read-only; the database was only ever read from scratch copies.
 Final database: schema 4, `integrity_check` ok, no foreign-key violation, 25
 sessions (none Active), every row that existed before Phase 9 unchanged; the
 only additions are sessions #23-#25. Both safety backups
-(`C:\WattScopeBackup\phase9-20261002-212546`,
+(`<backup-directory>\phase9-20261002-212546`,
 `...\phase9-preuninstall-20261002-230731`) verify against their hash lists.
 WattScope is currently **not installed** on the development machine.
 
@@ -443,7 +443,7 @@ packaging, Phase 6 and the S1 smoke test).
 
 ## Phase 10 -- Windows session lifecycle (manual, run by the user) -- PASSED
 
-2026-10-04, the Phase 9 MSI (built from `5ca97f7` plus the MSI-only setting;
+2026-10-04, the Phase 9 MSI (built from `f634235` plus the MSI-only setting;
 the commit after it changed documentation only) installed under
 `C:\Program Files\WattScope`, launched unelevated from the Start menu, against
 the **normal** database. Every event was a real user action. Before each
@@ -452,7 +452,7 @@ was launched again, the processes, auto-start locations, Windows event logs
 and a copy of the database with its write-ahead log were examined. The
 original database was never opened by the inspection. Evidence (reports and
 database copies, outside the repository):
-`C:\WattScopeBackup\phase10-evidence\`.
+`<backup-directory>\phase10-evidence\`.
 
 | Checklist | Event (Windows evidence) | Session | Result |
 |---|---|---|---|
@@ -493,7 +493,7 @@ after every step; all 29 sessions consistent (no open session, no sample
 outside its session, no duplicate gap, no overlapping availability run);
 every row that existed before Phase 10 unchanged. Final SHA-256
 `97109213...3FD4070A`. Baseline backup:
-`C:\WattScopeBackup\phase10-20261003-001746`.
+`<backup-directory>\phase10-20261003-001746`.
 
 **Errors.** No Application Error, Application Hang, Windows Error Reporting
 or .NET Runtime event and no crash file for `wattscope.exe`,
@@ -519,7 +519,7 @@ how an `Interrupted` session is labelled on the Reports page; other hardware.
 
 ## Phase 11 -- pre-RC disposition and version alignment (automated) -- DONE
 
-2026-10-04, on `dd86cb0`. No manual testing; no soak, lifecycle run or MSI
+2026-10-04, on `6066ec5`. No manual testing; no soak, lifecycle run or MSI
 build. Nothing was launched against the normal database (only unit and
 integration tests on temporary databases, and one headless browser page).
 
@@ -621,8 +621,8 @@ passed, 0 failed, 0 skipped (Core 221, Storage 72, Hardware 22, Probe 103;
 
 ## Phase 12 -- four-hour soak (R1, automated) -- PASSED
 
-2026-10-04, candidate `d472211`, tree clean, no code changed. The binaries in
-`target/release` were still those of `5ca97f7`, so they were rebuilt first
+2026-10-04, candidate `8faec3a`, tree clean, no code changed. The binaries in
+`target/release` were still those of `f634235`, so they were rebuilt first
 (`publish-probe.ps1`, `tauri build --no-bundle`; no MSI): sidecar stamped
 `0.1.0+d472211...`, SHA-256 `12D044E0...ACC7B0BA8`; host SHA-256
 `880EA144...166640E5`. A 3-minute run of the same script was used as a
@@ -697,7 +697,7 @@ analysis script. Evidence (CSV, log, page readings, analysis) is in
 
 ## Phase 13 -- final unattended lifecycle run (R2, automated) -- PASSED
 
-2026-10-04, HEAD `48c7320` (documentation only since `d472211`), tree clean,
+2026-10-04, HEAD `8f20f36` (documentation only since `8faec3a`), tree clean,
 no code and no script changed. The binaries in `target/release` are the ones
 Phase 12 built and soaked: sidecar stamped `0.1.0+d472211...`, SHA-256
 `12D044E0...ACC7B0BA8`; host `0.1.0`, SHA-256 `880EA144...166640E5`; no
@@ -749,10 +749,10 @@ watcher and a read-only analysis script. Evidence is in
 
 ## Phase 14 -- final automated regression (G1) -- PASSED
 
-2026-10-04, branch `master`, HEAD `67fa62d`, tree clean, no remote configured.
-Application candidate `d472211`; `git diff d472211 HEAD` touches only
-`docs/PRE_RELEASE_CHECKLIST.md` and `docs/PROJECT_STATE.md` (commits `48c7320`
-and `67fa62d`), so the candidate is unchanged. Nothing was fixed, rebuilt for
+2026-10-04, branch `master`, HEAD `9778726`, tree clean, no remote configured.
+Application candidate `8faec3a`; `git diff 8faec3a HEAD` touches only
+`docs/PRE_RELEASE_CHECKLIST.md` and `docs/PROJECT_STATE.md` (commits `8f20f36`
+and `9778726`), so the candidate is unchanged. Nothing was fixed, rebuilt for
 release or packaged; no MSI was built. Environment: Windows 11 10.0.26300,
 AMD64, .NET SDK 10.0.401, Node v24.19.0 / npm 11.17.0, rustc and cargo 1.98.1.
 
@@ -771,12 +771,12 @@ note, present before this phase, with no effect on the product: **known
 non-blocker**. No other compiler, TypeScript, Vite or Cargo warning was seen.
 The Debug build output is a build product, not the release artifact.
 
-**G2 must package `d472211`, built from a clean checkout of exactly that
+**G2 must package `8faec3a`, built from a clean checkout of exactly that
 commit** (for example a detached worktree), not from HEAD. The MSI contains the
 frontend build, the host and the sidecar only (`bundle.resources` is empty);
 documentation is not an input, so HEAD would produce the same functionality.
 But the sidecar stamps the checked-out commit as its informational version,
-and R1 and R2 validated binaries stamped `0.1.0+d472211`. Building at `d472211`
+and R1 and R2 validated binaries stamped `0.1.0+d472211`. Building at `8faec3a`
 makes the MSI's stamp equal to the validated candidate; building at HEAD would
 stamp a documentation commit that no soak or lifecycle run exercised.
 
@@ -785,10 +785,10 @@ limitations).
 
 ## Phase 15 -- final MSI (G2) -- PASSED
 
-2026-10-05. Main repository: `master`, HEAD `a0a670a`, tree clean, no remote;
-the three commits after `d472211` change only `docs/PRE_RELEASE_CHECKLIST.md`
+2026-10-05. Main repository: `master`, HEAD `8b9e153`, tree clean, no remote;
+the three commits after `8faec3a` change only `docs/PRE_RELEASE_CHECKLIST.md`
 and `docs/PROJECT_STATE.md`. The MSI was built in a temporary detached
-worktree of exactly `d472211f9b1c038fe2823b7e00199c8522aba840` (clean before
+worktree of exactly `8faec3a439b3fec02c9b5e5dbdb8b4b65eb658bc` (clean before
 and after the build; removed afterwards; the main working tree was never
 touched). The fresh checkout had no generated outputs (`node_modules`, `dist`,
 `target`, `binaries` are git-ignored), so nothing stale could be reused.
@@ -803,7 +803,7 @@ release.
 | | |
 |---|---|
 | File | `WattScope_0.1.0_x64_en-US.msi` |
-| Stable copy | `C:\Users\Administrator\Desktop\wattScope-release\WattScope_0.1.0_x64_en-US.msi` (outside git; SHA-256 verified identical to the build output) |
+| Stable copy | `<release-artifact-directory>\WattScope_0.1.0_x64_en-US.msi` (outside git; SHA-256 verified identical to the build output) |
 | Size | 37,928,960 bytes |
 | SHA-256 | `255CD48895E94F3554FB611EDED3EF9007D0FC5C234F8BD7371A302DCCFC1D85` |
 | Signature | none (unsigned: known non-blocker) |
@@ -823,14 +823,16 @@ installed). The payload is exactly two files:
 | `wattscope.exe` | 4,755,456 | `A988433C03FFF6E9D0395B9E7803448727FB69562893AEFBF0C099880760B9A9` | File/Product `0.1.0` |
 | `wattscope-probe.exe` | 82,143,676 | `FBAD564D933DC0B4D895116E66FD84EE8D4FC4F41049628A234D300C552EE66F` | FileVersion `0.1.0.0`, ProductVersion `0.1.0+d472211f9b1c038fe2823b7e00199c8522aba840` |
 
-The sidecar's commit stamp is `d472211`, as G2 requires.
+The sidecar's commit stamp is `d472211`, as G2 requires. (That is the pre-publication
+commit ID of the candidate, now `8faec3a` in the published history; see
+`RELEASE_NOTES.md`.)
 
 **Comparison with the R1/R2 binaries.** The hashes differ (host
 `880EA144...166640E5`, sidecar `12D044E0...ACC7B0BA8`); this is explained, not a
 defect. Source commit, versions, sidecar stamp, lockfiles (clean worktree) and
 configuration are identical. The sidecar embeds the absolute build path: the R2
-sidecar has 4 references to `...\Desktop\wattScope\`, the new one 4 to
-`...\Desktop\wattScope-g2-build\` instead. The host differs in 4,337 of
+sidecar has 4 references to the development checkout path, the new one 4 to
+the separate clean-worktree build path instead. The host differs in 4,337 of
 4,755,456 bytes (same length), the first at the PE header, including the PE
 build timestamp, and Tauri also patches the bundle type (`msi`) into the
 packaged exe. This is ordinary build nondeterminism, **not byte-proven** (no
@@ -860,8 +862,8 @@ limitations) -- done in Phase 16.
 
 ## Phase 16 -- release documentation (G4) and RC closure -- PASSED
 
-2026-10-05. Documentation only (HEAD `cf124c9` before the commit; application
-source `d472211`). Changed: `README.md` (user-facing product description,
+2026-10-05. Documentation only (HEAD `8925417` before the commit; application
+source `8faec3a`). Changed: `README.md` (user-facing product description,
 MEASURED / ESTIMATED / UNAVAILABLE, requirements, installation, measurement
 limitations, privacy, gaming wording; developer material kept below a
 "For developers" heading), new `docs/RELEASE_NOTES.md` (installer filename,
@@ -1033,7 +1035,7 @@ Scope: finish the *application*, not validate a release. No schema change
 
 ## Product audit (Part A) -- what was wrong, and what was done
 
-Baseline `c78cae6`, clean tree. Gap analysis between what the engine could do,
+Baseline `7634f5f`, clean tree. Gap analysis between what the engine could do,
 what the UI exposed, and what was unfinished or misleading:
 
 | Finding | Resolution |
@@ -1321,7 +1323,7 @@ privileged IPC or automatic elevation was built, and no gaming analytics.
 ## Retained from the pre-correction work / removed because of the scope change
 
 There was no uncommitted M004 work when the scope was corrected (`git status`
-was clean at `56fd6aa`), so nothing was reverted. The one piece of **committed**
+was clean at `3f557e1`), so nothing was reverted. The one piece of **committed**
 Milestone 003 code that conflicted with the revised scope was removed: the
 `restart_sidecar_elevated` command and Settings button (it elevated only the
 sidecar and left an untracked second recorder outside the host's control,
