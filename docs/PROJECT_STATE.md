@@ -22,8 +22,10 @@ top of Milestone 006.
   Phase 12 (the 4-hour soak, R1) is **done** and PASSED on `d472211`
   ("Phase 12" below). Phase 13 (the final unattended lifecycle run, R2) is
   **done** and PASSED on the same binaries ("Phase 13" below).
-  **Left before a release candidate:** the final regression (G1), the final
-  MSI (G2) and the release documentation (G4).
+  Phase 14 (the final automated regression, G1) is **done** and PASSED on
+  `d472211` ("Phase 14" below).
+  **Left before a release candidate:** the final MSI (G2) and the release
+  documentation (G4).
 
 - **Milestone 006** -- Application Completion, UX Polish & Feature-Complete
   Candidate: **implemented; the application is FEATURE COMPLETE** (see the
@@ -70,8 +72,9 @@ Phase 6 (Administrator) and Phase 7 (real Warzone). Phase 8 (FPS) was
 cancelled, Phase 9 (installers, MSI only) was done on 2026-10-02/03 and
 Phase 10 (Windows session lifecycle) on 2026-10-04, and Phase 11 (pre-RC
 disposition of R3-R7 and G3) the same day, followed by Phase 12 (the 4-hour
-soak, R1) and Phase 13 (the final lifecycle run, R2). **Of the
-release-candidate work, G1, G2 and G4 have not been started.**
+soak, R1), Phase 13 (the final lifecycle run, R2) and Phase 14 (the final
+automated regression, G1). **Of the release-candidate work, G2 and G4 have
+not been started.**
 
 **Release blockers found: none.** Two defects were fixed in Phases 1-5 (a
 test-script race and high-contrast marking) and three known issues in
@@ -741,6 +744,42 @@ that runs the unchanged script and keeps its transcript, the read-only
 watcher and a read-only analysis script. Evidence is in
 `%TEMP%\wattscope-lifecycle-R2-20261004-210807`, the database in
 `%TEMP%\wattscope-validation-lifecycle-c96a6665`; neither is in git.
+
+## Phase 14 -- final automated regression (G1) -- PASSED
+
+2026-10-04, branch `master`, HEAD `67fa62d`, tree clean, no remote configured.
+Application candidate `d472211`; `git diff d472211 HEAD` touches only
+`docs/PRE_RELEASE_CHECKLIST.md` and `docs/PROJECT_STATE.md` (commits `48c7320`
+and `67fa62d`), so the candidate is unchanged. Nothing was fixed, rebuilt for
+release or packaged; no MSI was built. Environment: Windows 11 10.0.26300,
+AMD64, .NET SDK 10.0.401, Node v24.19.0 / npm 11.17.0, rustc and cargo 1.98.1.
+
+| Check | Command | Result |
+|---|---|---|
+| .NET | `dotnet test WattScope.slnx` | Core 221, Storage 72, Hardware 22, Probe 103 = **418 passed, 0 failed, 0 skipped** (the Phase 11 baseline, unchanged) |
+| Frontend tests | `npm test` (in `desktop/`) | **191 passed, 13 files, 0 failed** (includes `ActionButton` 6, `gaming` 11) |
+| Typecheck | `npm run typecheck` | clean |
+| Frontend build | `npm run build` | clean (98 modules; `dist` is git-ignored) |
+| Rust | `cargo test` (in `desktop/src-tauri/`) | **15 passed, 0 failed** |
+| Version (G3) | sources and built sidecar | `0.1.0` in `package.json`, `Cargo.toml`, `tauri.conf.json`, `Directory.Build.props`; the Debug sidecar built by the test run reads FileVersion `0.1.0.0`, ProductVersion `0.1.0+67fa62d...` (HEAD, because the stamp is the checked-out commit) |
+
+Warnings: one, `xUnit1031` (blocking task operation) in
+`WattScope.Storage.Tests/SessionOwnershipTests.cs` line 49. A test-only analyzer
+note, present before this phase, with no effect on the product: **known
+non-blocker**. No other compiler, TypeScript, Vite or Cargo warning was seen.
+The Debug build output is a build product, not the release artifact.
+
+**G2 must package `d472211`, built from a clean checkout of exactly that
+commit** (for example a detached worktree), not from HEAD. The MSI contains the
+frontend build, the host and the sidecar only (`bundle.resources` is empty);
+documentation is not an input, so HEAD would produce the same functionality.
+But the sidecar stamps the checked-out commit as its informational version,
+and R1 and R2 validated binaries stamped `0.1.0+d472211`. Building at `d472211`
+makes the MSI's stamp equal to the validated candidate; building at HEAD would
+stamp a documentation commit that no soak or lifecycle run exercised.
+
+Remaining: G2 (final MSI, SHA-256) and G4 (README, release notes, known
+limitations).
 
 ## Phase 3 -- long-session stability (soak)
 

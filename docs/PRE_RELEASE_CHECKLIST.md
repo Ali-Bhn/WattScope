@@ -123,7 +123,7 @@ historical. "Either installer" below now means the MSI.
 
 | # | Item | Status |
 |---|---|---|
-| G1 | Final automated regression on the candidate commit (section 0) | UNVERIFIED |
+| G1 | Final automated regression on the candidate commit (section 0) | PASSED 2026-10-04 (Phase 14) on application candidate `d472211` (HEAD `67fa62d`; the two commits after it change only `docs/PRE_RELEASE_CHECKLIST.md` and `docs/PROJECT_STATE.md`): `dotnet test WattScope.slnx` 418/418 (Core 221, Storage 72, Hardware 22, Probe 103; 0 failed, 0 skipped); `npm test` 191/191 in 13 files; `npm run typecheck` and `npm run build` clean; `cargo test` 15/15; product version `0.1.0` in all four places and the built sidecar reads FileVersion `0.1.0.0`. No MSI built (that is G2) |
 | G2 | Final MSI built from that commit (MSI only, see section C); SHA-256 recorded | UNVERIFIED |
 | G3 | One product version everywhere | PASSED 2026-10-04 (Phase 11): product version `0.1.0` in `package.json`, `Cargo.toml`, `tauri.conf.json` and, new, `Directory.Build.props` for every .NET project; the sidecar is built as assembly / file version `0.1.0.0` (the four-part Windows form) with informational version `0.1.0+<commit>`, read back from the built binary. `ProductVersionTests` fails if they drift. To re-read from the installed files once the final MSI (G2) exists |
 | G4 | README / release notes / known limitations updated | UNVERIFIED |
