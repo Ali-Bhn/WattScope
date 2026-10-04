@@ -156,8 +156,7 @@ describe("localization", () => {
   });
 
   it("writes Persian in Persian script (only identifiers and bare placeholders stay Latin)", () => {
-    // "common.na" is a bare dash ("not available"), which has no letters in any script.
-    const latinOnly = new Set(["app.title", "chart.cpu", "chart.gpu", "settings.diagnostics.webview", "reports.titles.month", "common.na"]);
+    const latinOnly = new Set(["app.title", "chart.cpu", "chart.gpu", "settings.diagnostics.webview", "reports.titles.month"]);
     for (const [key, value] of Object.entries(languages.fa)) {
       if (latinOnly.has(key)) continue;
       expect(value, key).toMatch(/[؀-ۿ]/);
@@ -199,7 +198,12 @@ describe("localization", () => {
   it("has the Gaming navigation entry in every language", () => {
     for (const strings of Object.values(all)) {
       expect(strings["nav.gaming"]).toBeTruthy();
-      expect(strings["common.na"]).toBeTruthy();
+    }
+  });
+
+  it("has no second wording for a missing value: the UI writes \"--\", not a translated \"n/a\"", () => {
+    for (const strings of Object.values(all)) {
+      expect(strings["common.na"]).toBeUndefined();
     }
   });
 

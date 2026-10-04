@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import en from "@/locales/en.json";
-import { COST_STATUS_KEYS, END_REASON_KEYS, SOURCE_KEYS, costDisplay, endLabelKey, isLowerBound, isRunningSession, unmonitoredSeconds } from "./gaming";
+import { COST_STATUS_KEYS, END_REASON_KEYS, SOURCE_KEYS, costDisplay, costText, endLabelKey, isLowerBound, isRunningSession, unmonitoredSeconds } from "./gaming";
 import type { GamingEndReason, GamingLiveState } from "./types";
 
 type Tree = { [key: string]: string | Tree };
@@ -48,6 +48,15 @@ describe("gaming cost presentation", () => {
   it("does not turn a missing cost into zero", () => {
     expect(costDisplay("priced", null, "EUR")).toEqual({ kind: "none" });
     expect(costDisplay("noEstimate", null, null)).toEqual({ kind: "none" });
+  });
+
+  it("writes a withheld or missing cost as \"--\" like every other missing value, never as 0 or \"n/a\"", () => {
+    for (const display of [costDisplay("withheldPartial", 0.002, "EUR"), costDisplay("withheldUnpriced", 0.01, "EUR"), costDisplay("noEstimate", null, null), costDisplay("priced", null, "EUR")]) {
+      expect(costText(display)).toBe("--");
+    }
+    // A real zero cost is an amount, not a missing value.
+    expect(costText(costDisplay("priced", 0, "EUR"))).toMatch(/0[.,]00/);
+    expect(costText(costDisplay("priced", 0.16, "EUR"))).toMatch(/0[.,]16/);
   });
 
   it("falls back to EUR only for the currency symbol, never for the amount", () => {

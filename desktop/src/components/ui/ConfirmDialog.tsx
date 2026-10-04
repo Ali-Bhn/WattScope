@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { ActionButton } from "./ActionButton";
 
 /**
  * A modal confirmation built on the native <dialog>: the browser traps focus inside it, makes the rest of
@@ -52,12 +53,12 @@ export function ConfirmDialog({
           </h2>
           <div className="flex flex-col gap-2 text-sm text-ink-secondary">{children}</div>
           <div className="flex flex-wrap justify-end gap-2">
-            <button type="button" className="btn" autoFocus onClick={onCancel} disabled={busy}>
+            <ActionButton className="btn" autoFocus onClick={onCancel} inactive={busy}>
               {t("common.cancel")}
-            </button>
-            <button type="button" className={`btn ${destructive ? "btn-danger" : "btn-primary"}`} onClick={onConfirm} disabled={busy}>
+            </ActionButton>
+            <ActionButton className={`btn ${destructive ? "btn-danger" : "btn-primary"}`} onClick={onConfirm} inactive={busy}>
               {confirmLabel}
-            </button>
+            </ActionButton>
           </div>
         </div>
       )}

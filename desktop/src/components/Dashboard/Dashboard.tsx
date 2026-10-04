@@ -6,6 +6,7 @@ import { formatDuration, formatEnergy, formatKwhValue, formatMoney, formatWatts 
 import { costVisibility, isRecording, sessionEnergy, type MonitoringQuality } from "@/lib/monitoring";
 import { Num } from "@/components/Num";
 import { LiveChart } from "@/components/LiveChart/LiveChart";
+import { ActionButton } from "@/components/ui/ActionButton";
 import { Badge, CompletenessBadge, type BadgeKind } from "@/components/ui/Badge";
 import { Hint } from "@/components/ui/Hint";
 import { Notice } from "@/components/ui/Notice";
@@ -75,9 +76,9 @@ export function Dashboard() {
             </p>
           )}
         </div>
-        <button type="button" className={`btn ${running ? "" : "btn-primary"}`} onClick={() => void toggle()} disabled={busy || quality === "starting" || !backendUp}>
+        <ActionButton className={`btn ${running ? "" : "btn-primary"}`} onClick={() => void toggle()} inactive={busy || quality === "starting"} disabled={!backendUp}>
           {running ? t("dashboard.stopMonitoring") : t("dashboard.startMonitoring")}
-        </button>
+        </ActionButton>
       </section>
 
       {actionError !== null && <ErrorPanel error={actionError} compact />}

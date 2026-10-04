@@ -3,12 +3,13 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@/hooks/useQuery";
 import { sidecarRequest, useGamingSessionId, useIsRecording, useMonitoringActions, useTick, useUiVisible } from "@/hooks/useSidecar";
 import { Num } from "@/components/Num";
+import { ActionButton } from "@/components/ui/ActionButton";
 import { Badge, CompletenessBadge } from "@/components/ui/Badge";
 import { EmptyState, ErrorPanel, Loading, PageHeader } from "@/components/ui/States";
 import { Notice } from "@/components/ui/Notice";
 import { StatCard } from "@/components/ui/StatCard";
 import { formatDuration, formatEnergy, formatKwh, formatLocalDateTime, formatMoney, formatWatts } from "@/lib/format";
-import { COST_STATUS_KEYS, costDisplay, endLabelKey, isRunningSession, SOURCE_KEYS, unmonitoredSeconds, type CostDisplay } from "@/lib/gaming";
+import { COST_STATUS_KEYS, costDisplay, costText, endLabelKey, isRunningSession, SOURCE_KEYS, unmonitoredSeconds, type CostDisplay } from "@/lib/gaming";
 import type { GameAggregate, GameMapping, GameMappingKind, GamingLiveState, GamingSessionDetail, GamingSessionSummary, GamingStateResponse, RunningExecutable, TickMessage } from "@/lib/types";
 
 /** The newest N sessions are listed; older ones still count in the per-game totals below. */
@@ -20,9 +21,7 @@ function GameName({ children }: { children: ReactNode }) {
 }
 
 function Cost({ display }: { display: CostDisplay }) {
-  const { t } = useTranslation();
-  if (display.kind === "amount") return <Num>{formatMoney(display.amount, display.currency, 2)}</Num>;
-  return <span className="text-ink-muted">{t("common.na")}</span>;
+  return <Num className={display.kind === "amount" ? undefined : "text-ink-muted"}>{costText(display)}</Num>;
 }
 
 /**
@@ -224,9 +223,9 @@ function ManualControl({ live, monitoring, onChanged }: { live: GamingLiveState 
   if (manualRunning) {
     return (
       <div className="flex flex-col items-start gap-2">
-        <button type="button" className="btn" disabled={busy} onClick={() => void run(() => sidecarRequest({ cmd: "stop_manual_gaming" }))}>
+        <ActionButton className="btn" inactive={busy} onClick={() => void run(() => sidecarRequest({ cmd: "stop_manual_gaming" }))}>
           {t("gaming.manual.stop")}
-        </button>
+        </ActionButton>
         {error !== null && <ErrorPanel error={error} compact />}
       </div>
     );
@@ -262,7 +261,7 @@ function ManualControl({ live, monitoring, onChanged }: { live: GamingLiveState 
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-sm">
               <span className="label">{t("gaming.manual.name")}</span>
-              <input className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} required />
+              <input className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} required autoFocus />
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="label">{t("gaming.manual.exe")}</span>
@@ -274,9 +273,9 @@ function ManualControl({ live, monitoring, onChanged }: { live: GamingLiveState 
             </label>
           </div>
           <div className="flex gap-2">
-            <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()}>
+            <ActionButton type="submit" className="btn btn-primary" inactive={busy} disabled={!name.trim()}>
               {t("gaming.manual.begin")}
-            </button>
+            </ActionButton>
             <button type="button" className="btn" onClick={() => setOpen(false)}>
               {t("common.cancel")}
             </button>
@@ -566,7 +565,7 @@ function AggregatesSection({ aggregates }: { aggregates: GameAggregate[] | null 
                       <Num>{formatKwh(g.complete.systemJoules)}</Num>
                       <Num className="text-xs text-ink-secondary">{g.complete.avgSystemWatts === null ? "--" : formatWatts(g.complete.avgSystemWatts, 0)}</Num>
                       <span className="text-xs text-ink-secondary">
-                        {g.complete.cost !== null ? <Num>{formatMoney(g.complete.cost, g.currency ?? "EUR", 2)}</Num> : t("common.na")}
+                        {g.complete.cost !== null ? <Num>{formatMoney(g.complete.cost, g.currency ?? "EUR", 2)}</Num> : "--"}
                         {g.complete.unpricedSessions > 0 && ` (${t("gaming.aggregates.unpriced")}: ${g.complete.unpricedSessions})`}
                       </span>
                     </div>

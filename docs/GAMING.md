@@ -304,7 +304,7 @@ animation. *Live*: "No game detected" (or "possible game, confirming"), or a
 card with the game name, LIVE/ENDING, Auto-detected/Manual, duration (with
 monitored time when they differ), GPU power, CPU power (`--` and a reason
 when unavailable), estimated system power, energy (`>=` when partial) and
-cost (`n/a` with the reason when not valid), plus a partial banner. *History*:
+cost (`--` with the reason when not valid), plus a partial banner. *History*:
 a table (game, start, duration, monitored, energy, cost, completeness) with a
 detail panel (end, unmonitored time, gaps, end reason, detection source,
 average and peak CPU/GPU/system power, rename/exclude). *Per game*: the

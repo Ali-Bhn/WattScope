@@ -10,6 +10,8 @@ Status words, used strictly:
 - **PASSED** -- actually performed, with the date and where the evidence is.
 - **PARTLY** -- part of the item was performed; what is left is stated.
 - **UNVERIFIED** -- not performed. Never mark an item passed without running it.
+- **ACCEPTED NON-BLOCKER** -- investigated; the behaviour is known and accepted
+  for the release, with the reason stated.
 
 Procedures that need a person are in `docs/MANUAL_VALIDATION.md`; results are
 recorded in `docs/PROJECT_STATE.md` ("Pre-release validation"). Always point
@@ -99,7 +101,7 @@ historical. "Either installer" below now means the MSI.
 | E1 | Native tray menu: every item, language follows the UI, Start/Stop enable/disable, Exit | PARTLY 2026-10-02 (user, English, while recording a Complete session): status / power / session-and-cost lines correct, Start disabled, Stop enabled, Exit clean. Also seen in the Partial state during Phase 7 (lines correct apart from Known issue 7; Open and Exit used). Not checked: Settings, Start/Stop clicks, the stopped state, German/Persian |
 | E2 | Second launch forwards to the first window | PASSED by script (2026-10-02); confirm visually once |
 | E3 | The window at 880x600, 1120x740, 1600x1000 and maximized; English, German and Persian; in the real WebView2 | PASSED 2026-10-02: 84 page x language x size combinations, no overflow, truncation, raw key or contrast failure |
-| E4 | Keyboard-only pass through every page (Tab order, focus ring, dialogs) | PASSED 2026-10-02 with one known issue (focus is dropped when a button disables itself; see Known issues) |
+| E4 | Keyboard-only pass through every page (Tab order, focus ring, dialogs) | PASSED 2026-10-02 with one known issue (focus is dropped when a button disables itself), fixed in Phase 11 (R3); the fix is covered by automated tests, the by-hand pass was not repeated |
 | E4b | Screen-reader pass with a real screen reader (NVDA / Narrator) | PARTLY: the accessibility tree was checked (names, roles, landmarks, headings, live regions); **no real screen reader was run** |
 | E5 | Windows high-contrast mode and 125 % / 150 % display scaling | PARTLY: forced-colours and device-pixel-ratio 1.25/1.5/2 emulated in the real WebView2 (one defect found and fixed); the Windows settings themselves were not switched |
 | E6 | Persian digits/units/mixed-direction text read correctly on real pages | PASSED 2026-10-02 (programmatic on every page + screenshots); a native Persian reader has not reviewed the wording |
@@ -123,7 +125,7 @@ historical. "Either installer" below now means the MSI.
 |---|---|---|
 | G1 | Final automated regression on the candidate commit (section 0) | UNVERIFIED |
 | G2 | Final MSI built from that commit (MSI only, see section C); SHA-256 recorded | UNVERIFIED |
-| G3 | One product version everywhere (the sidecar currently stamps sessions with its assembly version `1.0.0.0`; the app is `0.1.0`) | UNVERIFIED -- known inconsistency, see Known issues |
+| G3 | One product version everywhere | PASSED 2026-10-04 (Phase 11): product version `0.1.0` in `package.json`, `Cargo.toml`, `tauri.conf.json` and, new, `Directory.Build.props` for every .NET project; the sidecar is built as assembly / file version `0.1.0.0` (the four-part Windows form) with informational version `0.1.0+<commit>`, read back from the built binary. `ProductVersionTests` fails if they drift. To re-read from the installed files once the final MSI (G2) exists |
 | G4 | README / release notes / known limitations updated | UNVERIFIED |
 
 ## Required before the release candidate (decided 2026-10-02)
@@ -132,11 +134,11 @@ historical. "Either installer" below now means the MSI.
 |---|---|---|
 | R1 | The 4-hour soak (`soak.ps1 -Minutes 240`), deferred until the machine can be left unused for four hours | UNVERIFIED |
 | R2 | One final **unattended** lifecycle run (`validate-lifecycle.ps1`, nobody using the desktop) | UNVERIFIED |
-| R3 | Focus loss when a busy button disables itself: preferably fixed, first investigating a shared UI primitive instead of patching every button; no broad risky change | OPEN |
-| R4 | Sidecar session version `1.0.0.0` vs app version `0.1.0`: resolve or explicitly disposition | OPEN |
-| R5 | Gaming withheld cost shows `n/a` where the rest of WattScope shows `--`: resolve or explicitly disposition | OPEN |
-| R6 | First-run / Retry foreground-input risk: act only if evidence supports a concrete fix | OPEN |
-| R7 | The fresh session after a give-up stays an **open observation**; the stray-input mechanism is **not** classified as proven | OPEN |
+| R3 | Focus loss when a busy button disables itself: preferably fixed, first investigating a shared UI primitive instead of patching every button; no broad risky change | PASSED 2026-10-04 (Phase 11): defect confirmed and fixed with one shared primitive (`ActionButton`); what is left is in Known issues 1 |
+| R4 | Sidecar session version `1.0.0.0` vs app version `0.1.0`: resolve or explicitly disposition | PASSED 2026-10-04 (Phase 11): the sidecar is now version `0.1.0` (stamped as `0.1.0.0`); see G3 |
+| R5 | Gaming withheld cost shows `n/a` where the rest of WattScope shows `--`: resolve or explicitly disposition | PASSED 2026-10-04 (Phase 11): every gaming cost cell (live card, history, detail, per-game totals, daily report) now shows `--`, in all three languages |
+| R6 | First-run / Retry foreground-input risk: act only if evidence supports a concrete fix | ACCEPTED NON-BLOCKER 2026-10-04 (Phase 11): no evidence supports a fix, no code changed; see Known issues 6 |
+| R7 | The fresh session after a give-up stays an **open observation**; the stray-input mechanism is **not** classified as proven | PASSED 2026-10-04 (Phase 11) for the behaviour: a fresh session after a give-up is clean and the only Active one (`GiveUpRetryTests`). The cause of the single unexplained occurrence stays **not proven**; see Known issues 5 |
 
 ## Release blockers found so far
 
@@ -144,32 +146,45 @@ historical. "Either installer" below now means the MSI.
 
 ## Known issues (non-blocking), found in pre-release validation
 
-1. **Keyboard focus is dropped when a button disables itself while it works**
-   (Save in Settings, Start/Stop monitoring, Retry, Optimize/Check database,
-   Show what would be deleted, Add price incl. after cancelling the past-price
-   dialog; opening the manual gaming form). Focus falls back to the document;
-   the next Tab continues from the same place, so every page stays operable by
-   keyboard, and results are announced through status regions. Not fixed under
-   the freeze (it touches every busy button); a candidate accessibility fix.
+1. **Keyboard focus when a control goes away** -- mostly fixed in Phase 11
+   (R3). Buttons that become unavailable through their own action (Save,
+   Start/Stop monitoring, Retry, Optimize/Check database, Show what would be
+   deleted, Add price, dialog buttons, the report's Next/Today) now stay
+   focusable and keep the focus; the manual gaming form takes the focus when
+   it opens. Consequence: such a button is a Tab stop even while unavailable
+   (announced as unavailable, does nothing). Still dropped to the document,
+   because the control itself is removed: Retry once the monitor is back,
+   Cancel/Begin of the manual gaming form, Stop manual session. The next Tab
+   continues from the same place. Verified by automated tests and a headless
+   browser check, not by a repeated by-hand keyboard pass.
 2. **Native date/month pickers use the Windows display language**, not the
    WattScope language (e.g. "Oktober 2026" in the English or Persian UI).
    Cosmetic; a property of the WebView2 control.
-3. **Version stamp**: sessions record the sidecar's assembly version
-   (`1.0.0.0`) while the product version is `0.1.0`. Not shown in the UI;
-   to be settled when the candidate version is fixed (G3).
-4. **Gaming live card shows `n/a`** for a withheld cost where the rest of the
-   app shows `--`. Both are honest (never 0); wording inconsistency only.
+3. **Version stamp** -- resolved in Phase 11 (R4/G3). Sessions recorded by
+   earlier builds keep the stamp `1.0.0.0`; new ones say `0.1.0.0`. Existing
+   rows are not rewritten. Diagnostics shows the app as `0.1.0` and the
+   monitor as `0.1.0.0`: the same version in the two platform forms.
+4. **Gaming cost `n/a`** -- resolved in Phase 11 (R5). Two worded places keep
+   "n/a" on purpose, neither is a value cell: the tray line ("cost n/a") and
+   unknown text fields of the Diagnostics panel (version, OS, WebView2).
 5. **Open observation (cause not proven):** in one lifecycle run a fresh
    session appeared about 9 s after the host had given up restarting. No
    automatic code path creates one; not reproduced in 19 further runs; that
    run's database proves outside input reached the test window (the first-run
    dialog was confirmed 2.1 s after launch). Details and conclusion:
    `PROJECT_STATE.md`, "The fresh session after a give-up". The script now
-   fails visibly if it happens again.
+   fails visibly if it happens again. Phase 11 (R7) added tests showing that
+   such a session, however it is started, is clean: the abandoned session is
+   closed as Interrupted at its last observation and nothing of it reaches
+   the new one.
 6. **WattScope takes the foreground when launched or re-shown**, with the
    first-run dialog's primary button focused, so a keystroke meant for another
    application can confirm that dialog. Ordinary launch behaviour; harmless
-   (the dialog only records that it was seen).
+   (the dialog only records that it was seen). Reviewed in Phase 11 (R6) and
+   accepted: the window is only brought forward by a user action (launch,
+   second launch, tray), never by a give-up; Retry is never focused
+   automatically, so only a click on it or a deliberate Tab reaches it; and
+   the host ignores Retry unless the monitor is really down.
 7. **Tray power line has no lower-bound mark**: while monitoring is Partial
    the tray shows "Estimated power: 118.5 W" without `>=`. The status line
    above it says "partial" and the session line has `>=`; wording only

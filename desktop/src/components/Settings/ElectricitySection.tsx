@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ActionButton } from "@/components/ui/ActionButton";
 import { useQuery } from "@/hooks/useQuery";
 import { sidecarRequest } from "@/hooks/useSidecar";
 import { Num } from "@/components/Num";
@@ -182,9 +183,9 @@ function PriceSettings({ info, onChanged }: { info: PriceInfo; onChanged: () => 
         <p className="max-w-prose text-xs text-ink-muted">{t("settings.electricity.appendOnly")}</p>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" className="btn btn-primary" onClick={() => void submit()} disabled={busy || priceText.trim() === ""}>
+          <ActionButton className="btn btn-primary" onClick={() => void submit()} inactive={busy || priceText.trim() === ""}>
             {t("settings.electricity.addPrice")}
-          </button>
+          </ActionButton>
           {savedPrice && (
             <span role="status" className="text-xs text-accent-green">
               <span aria-hidden="true">✓ </span>

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { ActionButton } from "@/components/ui/ActionButton";
 import { Field } from "@/components/ui/Field";
 import { ErrorPanel } from "@/components/ui/States";
 import { validationKey, validationParams, type SpecName } from "@/lib/validation";
@@ -74,9 +75,9 @@ export function NumberSettingField({
             />
           )}
         </Field>
-        <button type="button" className="btn btn-primary" onClick={() => void setting.save()} disabled={!canSave}>
+        <ActionButton className="btn btn-primary" onClick={() => void setting.save()} inactive={!canSave}>
           {t("common.save")}
-        </button>
+        </ActionButton>
         {extra}
       </div>
       {setting.saved && !setting.dirty && (

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { useBackend } from "@/hooks/useSidecar";
+import { ActionButton } from "@/components/ui/ActionButton";
 import { Loading } from "@/components/ui/States";
 import { Notice } from "@/components/ui/Notice";
 
@@ -48,9 +49,9 @@ export function BackendBanner() {
     <Notice tone="error" title={t("backend.failed.title")}>
       <p>{t(`backend.reason.${reason}`)}</p>
       <div className="mt-1 flex flex-wrap items-center gap-3">
-        <button type="button" className="btn" onClick={() => void retry()} disabled={busy}>
+        <ActionButton className="btn" onClick={() => void retry()} inactive={busy}>
           {busy ? t("backend.retrying") : t("common.retry")}
-        </button>
+        </ActionButton>
         {retryError && <span>{t("backend.retryFailed")}</span>}
         {backend.message && (
           <details className="text-ink-secondary">

@@ -17,8 +17,11 @@ top of Milestone 006.
   "Phase 9" below). Phase 10 (Windows sign-out, restart, shutdown and
   sleep on the installed build) is **done** and PASSED: no corruption, no
   fabricated time or energy, no self-start; sessions ended by Windows are
-  recovered as Interrupted ("Phase 10" below). The release-candidate work
-  (checklist sections R and G) has not been started.
+  recovered as Interrupted ("Phase 10" below). Phase 11 (the short pre-RC
+  items R3-R7 and the product version, G3) is **done** ("Phase 11" below).
+  **Left before a release candidate:** the 4-hour soak (R1), the final
+  unattended lifecycle run (R2), the final regression (G1), the final MSI
+  (G2) and the release documentation (G4).
 
 - **Milestone 006** -- Application Completion, UX Polish & Feature-Complete
   Candidate: **implemented; the application is FEATURE COMPLETE** (see the
@@ -63,12 +66,14 @@ limited to verified fixes, test infrastructure and documentation. Phases 1-5
 accessibility) were run on 2026-10-02, followed the same day by the user-run
 Phase 6 (Administrator) and Phase 7 (real Warzone). Phase 8 (FPS) was
 cancelled, Phase 9 (installers, MSI only) was done on 2026-10-02/03 and
-Phase 10 (Windows session lifecycle) on 2026-10-04. **The release-candidate
-work (checklist sections R and G) has not been started.**
+Phase 10 (Windows session lifecycle) on 2026-10-04, and Phase 11 (pre-RC
+disposition of R3-R7 and G3) the same day. **Of the release-candidate work,
+R1, R2, G1, G2 and G4 have not been started.**
 
-**Release blockers found: none.** Two defects were fixed (a test-script race
-and high-contrast marking); the known non-blocking issues are listed in the
-checklist.
+**Release blockers found: none.** Two defects were fixed in Phases 1-5 (a
+test-script race and high-contrast marking) and three known issues in
+Phase 11 (keyboard focus, the version stamp, the gaming cost wording); the
+known non-blocking issues are listed in the checklist.
 
 Every run of Phases 1-5 used a scratch database (`WATTSCOPE_DB`, path printed
 and checked first); Phases 6, 7, 9 and 10 deliberately ran against the normal
@@ -504,6 +509,107 @@ in the tray; sleep or a session end during an elevated (Complete) session; a
 sleep whose notification is missed (only the elapsed-time fallback tests);
 how an `Interrupted` session is labelled on the Reports page; other hardware.
 
+## Phase 11 -- pre-RC disposition and version alignment (automated) -- DONE
+
+2026-10-04, on `dd86cb0`. No manual testing; no soak, lifecycle run or MSI
+build. Nothing was launched against the normal database (only unit and
+integration tests on temporary databases, and one headless browser page).
+
+| Item | Finding | Result | Code change |
+|---|---|---|---|
+| R3 focus | **Defect confirmed.** Chromium 154 (headless Edge, the WebView2 engine) moves focus from a button to the document when it gets `disabled` and does not return it when the button is enabled again; with `aria-disabled` the focus stays. There was no shared button, every page used a plain `<button disabled={busy}>` | PASSED (fixed) | one primitive, `components/ui/ActionButton.tsx`, used by the 16 buttons that become unavailable through their own action |
+| R4 version stamp | No .NET project declared a version, so the SDK default `1.0.0` was built into the sidecar | PASSED (fixed) | `Directory.Build.props` (`Version` 0.1.0) |
+| R5 gaming cost | A real inconsistency: `common.na` was "n/a" (EN), "n. v." (DE) and an em dash (FA), used only for gaming cost cells, where every other missing value is `--` | PASSED (fixed) | `costText` in `lib/gaming.ts`; `common.na` removed from the three languages |
+| R6 foreground input | See below | ACCEPTED NON-BLOCKER | none |
+| R7 fresh session after a give-up | Behaviour correct; coverage was one test with an empty orphan session | PASSED | tests only (`GiveUpRetryTests`) |
+| G3 one version | See below | PASSED | as R4 |
+
+**R3.** `ActionButton` takes `inactive` (stays focusable, `aria-disabled`,
+looks disabled, ignores click / Enter / Space and blocks a form submit) next
+to the native `disabled`, which is kept for reasons that are not the button's
+own action (invalid input, monitor down). Used for: Start/Stop monitoring
+(also while the monitor is starting), Retry, every Settings *Save*, *Add
+price*, Optimize / Check database, *Show what would be deleted*, *Delete
+history*, both confirmation-dialog buttons, Stop manual session, the manual
+form's Begin, and Next / Today / This month in Reports. The manual gaming
+form's name field takes the focus when the form opens. `.btn` styles
+`aria-disabled` like `disabled`, including GrayText in Windows high contrast.
+Not changed: focus is still dropped when the focused control is *removed*
+(Retry once the monitor is back; the manual form's buttons; Stop manual
+session). Trade-off: an unavailable button of this kind is now a Tab stop.
+Tests (the frontend has no DOM test environment and none was added): the
+rendered markup never carries `disabled` while inactive, activation is
+ignored, and a source check fails if any plain `<button>` is disabled on a
+busy/saving flag again. **Not done:** a repeated by-hand keyboard pass or a
+real screen reader on the new build (E4b stays PARTLY).
+
+**R4 / G3.** Version sources after the change:
+
+| Source | Value |
+|---|---|
+| `desktop/package.json`, `package-lock.json` | `0.1.0` |
+| `desktop/src-tauri/Cargo.toml`, `Cargo.lock` (host; `CARGO_PKG_VERSION` is what Diagnostics shows as the app version) | `0.1.0` |
+| `desktop/src-tauri/tauri.conf.json` (window, MSI ProductVersion, host file version) | `0.1.0` |
+| `Directory.Build.props` (all .NET projects; new) | `0.1.0` |
+| Sidecar assembly version = session stamp `app_version`, export `appVersion`, Diagnostics "Monitor (sidecar) version" | `0.1.0.0` |
+| Sidecar Windows file version | `0.1.0.0` |
+| Sidecar informational / product version | `0.1.0+<commit>` |
+
+Read back from the built `WattScope.Probe.exe` (Debug build of this tree):
+FileVersion `0.1.0.0`, ProductVersion `0.1.0+dd86cb01...`, assembly
+`0.1.0.0`. The product version stays **0.1.0**; nothing in the repository
+supports 1.0.0 (it was the SDK default, never a decision). `0.1.0` and
+`0.1.0.0` are the same version in the semantic and the four-part Windows
+form. `ProductVersionTests` compares the three desktop manifests with the
+sidecar's assembly, file and informational versions. Sessions recorded by
+earlier builds keep `1.0.0.0`; no row is rewritten and the schema is
+unchanged. **Not done here:** the published single-file sidecar and the MSI
+were not rebuilt (G2); their metadata is to be read once the final MSI exists.
+
+**R5.** `--` now stands for a withheld or missing gaming cost on the live
+card, in the history table, the detail panel, the per-game totals and the
+daily report's gaming table; the reason stays next to it ("Not shown: the
+estimate is partial", ...). A real cost of 0 is still shown as an amount. No
+cost calculation changed. Deliberately left: the tray line "cost n/a" and
+unknown text fields in Diagnostics (worded text, not value cells), and the
+CLI's wording.
+
+**R6.** What the item is: WattScope's window takes the foreground when it is
+launched or re-shown, so input meant for another application can land on it
+(Known issue 6; the only proven case is the first-run dialog being confirmed
+during scripted tests on a desktop in use). Findings from the code:
+`show_main` (show, unminimize, focus) is called only for a user action --
+launch, a second launch, tray click, tray *Open* / *Settings* -- and never on
+a give-up or restart; the first-run dialog focuses its primary button, whose
+only effect is to record that the introduction was seen; the Retry button is
+never focused automatically, so a stray keystroke cannot activate it, only a
+click on it or a deliberate Tab; `retry_sidecar` acts only in the `failed`
+state with no sidecar alive, and the sidecar's start is idempotent. No
+concrete defect and no fix that would not cost accessibility (a modal dialog
+has to put the focus somewhere), so nothing was changed.
+
+**R7.** The give-up path: the sidecar exits unexpectedly, the host restarts
+it with `--resume` after 1, 2 and 4 s, and on the fourth exit inside 60 s
+stops (`backend-state` = `failed`, reason `tooManyRestarts`; exit codes 3 and
+4 give up at once). Nothing restarts it afterwards. Only Retry or tray
+*Start* spawn a fresh `--serve`, whose start first closes any session left
+`Active` and then creates a new one. `GiveUpRetryTests` reproduces the
+database of a give-up (one session, four crashed runs, three Interrupted
+gaps, still `Active`) and shows: the abandoned session becomes `Interrupted`
+ending exactly at its last persisted observation with its energy, duration
+and gaps unchanged; the fresh session is a new row, the only `Active` one,
+starts at the time of the retry and starts with no buckets, gaps, samples,
+availability rows or last tick; it then accumulates only its own samples
+(Complete with a readable CPU although the abandoned one never read it);
+eight simultaneous starts still give one fresh session. The *cause* of the
+single unexplained fresh session of Phase 1 is still **not proven**; that
+part stays an open observation, guarded by the lifecycle script's last check.
+
+Automated results on the changed tree: `dotnet test WattScope.slnx` **418**
+passed, 0 failed, 0 skipped (Core 221, Storage 72, Hardware 22, Probe 103;
+412 before this phase, +6); frontend `npm test` **191** passed in 13 files
+(183 before, +8), `npm run typecheck` and `npm run build` clean; `cargo test`
+**15** passed. These are the phase's own runs, not the final regression (G1).
 ## Phase 3 -- long-session stability (soak)
 
 `desktop/scripts/soak.ps1` (new, reproducible): packaged app, scratch

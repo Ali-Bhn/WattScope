@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@/hooks/useQuery";
 import { useNav } from "@/hooks/useNav";
 import { Num } from "@/components/Num";
+import { ActionButton } from "@/components/ui/ActionButton";
 import { CompletenessBadge } from "@/components/ui/Badge";
 import { EmptyState, PageHeader } from "@/components/ui/States";
 import { QueryView } from "@/components/ui/QueryView";
@@ -10,7 +11,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { formatDayKey, formatDuration, formatKwh, formatLocalDateTime, formatMonthKey, formatMoney } from "@/lib/format";
 import { isFutureDayKey, isFutureMonthKey, isValidDayKey, isValidMonthKey, localDayKey, localMonthKey, shiftDayKey, shiftMonthKey } from "@/lib/dates";
 import { completenessOf, energyModel } from "@/lib/reports";
-import { costDisplay } from "@/lib/gaming";
+import { costDisplay, costText } from "@/lib/gaming";
 import type { DailyEnergy, EnergyTotals, GamingSessionSummary, SessionListEntry, SummaryResponse } from "@/lib/types";
 import { ReportView } from "./ReportView";
 
@@ -81,12 +82,12 @@ function DayTab() {
         <button type="button" className="btn" aria-label={t("reports.previousDay")} onClick={() => setDay((d) => shiftDayKey(d, -1))} disabled={!valid}>
           ‹ {t("reports.previous")}
         </button>
-        <button type="button" className="btn" aria-label={t("reports.nextDay")} onClick={() => setDay((d) => shiftDayKey(d, 1))} disabled={!valid || isFutureDayKey(shiftDayKey(day, 1))}>
+        <ActionButton className="btn" aria-label={t("reports.nextDay")} onClick={() => setDay((d) => shiftDayKey(d, 1))} inactive={valid && isFutureDayKey(shiftDayKey(day, 1))} disabled={!valid}>
           {t("reports.next")} ›
-        </button>
-        <button type="button" className="btn btn-quiet" onClick={() => setDay(today)} disabled={day === today}>
+        </ActionButton>
+        <ActionButton className="btn btn-quiet" onClick={() => setDay(today)} inactive={day === today}>
           {t("reports.tabs.today")}
-        </button>
+        </ActionButton>
       </div>
       {valid ? <DayReport day={day} live={day === today} /> : <EmptyState title={t("reports.invalidDate")} />}
     </>
@@ -143,7 +144,7 @@ function DayGaming({ day, live }: { day: string; live: boolean }) {
                           <Num>{s.completeness === "none" ? "--" : `${s.systemIsLowerBound ? "≥ " : ""}${formatKwh(s.systemJoules)}`}</Num>
                         </td>
                         <td>
-                          <Num>{cost.kind === "amount" ? formatMoney(cost.amount, cost.currency) : t("common.na")}</Num>
+                          <Num>{costText(cost)}</Num>
                         </td>
                         <td>
                           <CompletenessBadge completeness={s.completeness} />
@@ -181,12 +182,12 @@ function MonthTab() {
         <button type="button" className="btn" onClick={() => setMonth((m) => shiftMonthKey(m, -1))} disabled={!valid} aria-label={t("reports.previousMonth")}>
           ‹ {t("reports.previous")}
         </button>
-        <button type="button" className="btn" onClick={() => setMonth((m) => shiftMonthKey(m, 1))} disabled={!valid || isFutureMonthKey(shiftMonthKey(month, 1))} aria-label={t("reports.nextMonth")}>
+        <ActionButton className="btn" onClick={() => setMonth((m) => shiftMonthKey(m, 1))} inactive={valid && isFutureMonthKey(shiftMonthKey(month, 1))} disabled={!valid} aria-label={t("reports.nextMonth")}>
           {t("reports.next")} ›
-        </button>
-        <button type="button" className="btn btn-quiet" onClick={() => setMonth(current)} disabled={month === current}>
+        </ActionButton>
+        <ActionButton className="btn btn-quiet" onClick={() => setMonth(current)} inactive={month === current}>
           {t("reports.thisMonth")}
-        </button>
+        </ActionButton>
       </div>
       {!valid ? (
         <EmptyState title={t("reports.invalidDate")} />

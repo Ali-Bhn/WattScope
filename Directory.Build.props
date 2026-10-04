@@ -1,0 +1,16 @@
+<Project>
+
+  <!--
+    The WattScope product version, for every .NET project. It must equal the desktop app's version
+    (desktop/package.json, desktop/src-tauri/Cargo.toml, desktop/src-tauri/tauri.conf.json):
+    ProductVersionTests fails the build's test run if they drift apart.
+
+    Windows and .NET need four numeric parts, so 0.1.0 becomes AssemblyVersion / FileVersion 0.1.0.0, the
+    value the sidecar stamps on sessions and reports as its version. InformationalVersion is 0.1.0 plus the
+    source commit.
+  -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+</Project>

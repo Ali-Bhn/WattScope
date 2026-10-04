@@ -6,6 +6,7 @@ import type {
   GameDetectionSource,
   EstimateCompleteness,
 } from "@/lib/types";
+import { formatMoney } from "@/lib/format";
 
 /**
  * Presentation rules for gaming analytics. Pure, so the honesty rules are
@@ -25,6 +26,15 @@ export function costDisplay(status: GamingCostStatus, cost: number | null, curre
   if (status === "withheldPartial") return { kind: "withheldPartial" };
   if (status === "withheldUnpriced") return { kind: "withheldUnpriced" };
   return { kind: "none" };
+}
+
+/**
+ * The text of a gaming cost cell. A cost that is withheld or missing is "--", the same mark every other
+ * missing value in WattScope uses (never 0, and not a second wording such as "n/a"); the reason is shown
+ * next to it from COST_STATUS_KEYS.
+ */
+export function costText(display: CostDisplay, digits = 2): string {
+  return display.kind === "amount" ? formatMoney(display.amount, display.currency, digits) : "--";
 }
 
 /** Wall-clock length minus the part that was actually monitored (sleep, stalls, a restarted monitor). */

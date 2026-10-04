@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@/hooks/useQuery";
 import { sidecarRequest } from "@/hooks/useSidecar";
 import { Num } from "@/components/Num";
+import { ActionButton } from "@/components/ui/ActionButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field } from "@/components/ui/Field";
 import { Notice } from "@/components/ui/Notice";
@@ -114,12 +115,12 @@ function Maintenance({ onDone }: { onDone: () => void }) {
     <SettingBlock title={t("settings.data.maintenance")}>
       <p className="max-w-prose text-sm text-ink-secondary">{t("settings.data.maintenanceHelp")}</p>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn" onClick={() => void run("maintenance")} disabled={busy !== null}>
+        <ActionButton className="btn" onClick={() => void run("maintenance")} inactive={busy !== null}>
           {busy === "maintenance" ? t("common.working") : t("settings.data.optimize")}
-        </button>
-        <button type="button" className="btn" onClick={() => void run("integrity")} disabled={busy !== null}>
+        </ActionButton>
+        <ActionButton className="btn" onClick={() => void run("integrity")} inactive={busy !== null}>
           {busy === "integrity" ? t("common.working") : t("settings.data.checkIntegrity")}
-        </button>
+        </ActionButton>
       </div>
       {maintenance && (
         <Notice tone="ok">
@@ -197,9 +198,9 @@ function DeleteHistory({ onDone }: { onDone: () => void }) {
         <Field label={t("settings.data.deleteOlderThan")} unit={t("settings.data.days")} help={t("settings.data.deleteMin")} error={error}>
           {(props) => <input {...props} className="input w-24" dir="ltr" inputMode="numeric" value={days} onChange={(e) => changeDays(e.target.value)} />}
         </Field>
-        <button type="button" className="btn" onClick={() => void showPreview()} disabled={!parsed.ok || busy}>
+        <ActionButton className="btn" onClick={() => void showPreview()} inactive={busy} disabled={!parsed.ok}>
           {t("settings.data.deletePreview")}
-        </button>
+        </ActionButton>
       </div>
 
       {preview &&
@@ -219,9 +220,9 @@ function DeleteHistory({ onDone }: { onDone: () => void }) {
               </li>
             </ul>
             <div className="mt-2">
-              <button type="button" className="btn btn-danger" onClick={() => setConfirming(true)} disabled={busy}>
+              <ActionButton className="btn btn-danger" onClick={() => setConfirming(true)} inactive={busy}>
                 {t("settings.data.deleteButton")}
-              </button>
+              </ActionButton>
             </div>
           </Notice>
         ))}

@@ -170,7 +170,7 @@ Set an electricity price first (Settings) if you want to see a cost.
 4. **While playing (>= 10 minutes):** the duration counts up; GPU power is
    plausible for the load; CPU power shows a value when elevated and `--` with
    *Unavailable* when not; estimated system power and energy rise; the cost
-   is shown only for a Complete session (otherwise *n/a* with the reason);
+   is shown only for a Complete session (otherwise `--` with the reason);
    unelevated, the amber *Partial* banner is shown and energy is marked `>=`.
    The dashboard chart and the tray keep updating (monitoring continues).
    Closing the WattScope window to the tray must not stop either.
@@ -188,7 +188,7 @@ Set an electricity price first (Settings) if you want to see a cost.
 8. **Plausibility.** Energy ~ average system power x monitored time (for
    example 340 W for 1 h = 0.34 kWh; the cost = kWh x your price). Peaks are
    >= averages. GPU average is in the range you see in other tools.
-9. **Partial vs Complete.** Unelevated: Partial, CPU `--`/`n/a`, energy and
+9. **Partial vs Complete.** Unelevated: Partial, CPU `--`, energy and
    system power marked `>=`, **no** cost (a lower-bound cost may appear in
    the detail panel, labelled). Elevated: Complete, a cost if a price covers
    the session.
