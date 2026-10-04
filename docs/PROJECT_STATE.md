@@ -20,10 +20,10 @@ top of Milestone 006.
   recovered as Interrupted ("Phase 10" below). Phase 11 (the short pre-RC
   items R3-R7 and the product version, G3) is **done** ("Phase 11" below).
   Phase 12 (the 4-hour soak, R1) is **done** and PASSED on `d472211`
-  ("Phase 12" below).
-  **Left before a release candidate:** the final
-  unattended lifecycle run (R2), the final regression (G1), the final MSI
-  (G2) and the release documentation (G4).
+  ("Phase 12" below). Phase 13 (the final unattended lifecycle run, R2) is
+  **done** and PASSED on the same binaries ("Phase 13" below).
+  **Left before a release candidate:** the final regression (G1), the final
+  MSI (G2) and the release documentation (G4).
 
 - **Milestone 006** -- Application Completion, UX Polish & Feature-Complete
   Candidate: **implemented; the application is FEATURE COMPLETE** (see the
@@ -70,8 +70,8 @@ Phase 6 (Administrator) and Phase 7 (real Warzone). Phase 8 (FPS) was
 cancelled, Phase 9 (installers, MSI only) was done on 2026-10-02/03 and
 Phase 10 (Windows session lifecycle) on 2026-10-04, and Phase 11 (pre-RC
 disposition of R3-R7 and G3) the same day, followed by Phase 12 (the 4-hour
-soak, R1). **Of the release-candidate work, R2, G1, G2 and G4 have not been
-started.**
+soak, R1) and Phase 13 (the final lifecycle run, R2). **Of the
+release-candidate work, G1, G2 and G4 have not been started.**
 
 **Release blockers found: none.** Two defects were fixed in Phases 1-5 (a
 test-script race and high-contrast marking) and three known issues in
@@ -689,6 +689,58 @@ committed): a wrapper around `soak.ps1`, a DevTools poller and a read-only
 analysis script. Evidence (CSV, log, page readings, analysis) is in
 `%TEMP%\wattscope-soak-R1-20261004-170027`, the database in
 `%TEMP%\wattscope-validation-soak-c0452bc2`; neither is in git.
+
+## Phase 13 -- final unattended lifecycle run (R2, automated) -- PASSED
+
+2026-10-04, HEAD `48c7320` (documentation only since `d472211`), tree clean,
+no code and no script changed. The binaries in `target/release` are the ones
+Phase 12 built and soaked: sidecar stamped `0.1.0+d472211...`, SHA-256
+`12D044E0...ACC7B0BA8`; host `0.1.0`, SHA-256 `880EA144...166640E5`; no
+tracked source file is newer than them. Not rebuilt, no MSI built.
+
+Command, from the repository root, after a 15-second preflight (launch, one
+owned sidecar, scratch database at schema 4, clean stop when the host is
+ended, nothing left running):
+`powershell -NoProfile -ExecutionPolicy Bypass -File desktop\scripts\validate-lifecycle.ps1`.
+Started 21:08:10, ended 21:09:38 local time (88.5 s). **25/25, exit code 0,
+one run.** Scratch database, unelevated (Partial). The real database has the
+same size, time and SHA-256 (`97109213...3FD4070A`) before and after.
+
+**What the script does to the desktop.** It sends no keyboard or mouse input:
+it starts and ends processes and posts one `WM_CLOSE` to WattScope's own
+window handle. The "desktop not in use" advice exists only because WattScope
+takes the foreground when launched or re-shown, so somebody else's input can
+land on it. **This run was unattended but the desktop was in use**: a watcher
+beside the script (process list, foreground window, time since the last user
+input, every ~0.5 s) saw real input in 34 of 198 readings, 12 of them while
+WattScope had the foreground (Chrome, VS Code and Explorer had it otherwise).
+None of it reached a control: `app_setting` is empty (the first-run dialog was
+never confirmed) and only the script's two sessions exist, which is its own
+25th check. So an unused desktop is not required for a valid run; a run that
+is disturbed fails visibly and is repeated.
+
+| | Result |
+|---|---|
+| Processes (watcher) | never more than one host and one `--serve` sidecar; every sidecar a child of the host; spawn sequence `--serve`, three `--serve --resume`, give-up, then a fresh `--serve` for the relaunch; 6 WebView2 processes while the host ran; 0 host, 0 sidecar, 0 WattScope WebView2 at the end |
+| Session #1 (launch, racing launches, tray, crash loop) | `Interrupted` (recovered), 21:08:15 -> 21:08:46, ended exactly at its last observation; 32 samples, intervals 985-1013 ms; monitored 31.010 s = the sample span |
+| Session #2 (relaunch, host ended) | `Stopped` ("--serve exiting"), 21:09:22 -> 21:09:35; 13 samples, intervals 984-1011 ms; monitored 11.997 s = the sample span; starts 36.7 s after #1 ended, with its own bucket, samples and availability rows only |
+| Energy | GPU 1,343.68 J and 526.66 J, each within 0.02 J of a recomputation from the raw samples; Partial estimate equals (GPU + 50 W x time) / 0.9 in both; no CPU reading (`ImplausibleZero`, value NULL on all 45 samples, never 0), so 0 J Complete and no cost |
+| Gaps | 0 rows. The three resumed sidecars were ended after 1-3 s, before any of them recorded a sample; nothing was added for the 36.7 s between the sessions |
+| Availability | one run per channel per session, all closed at the session's last sample, matching every sample |
+| Database | schema 4, `integrity_check` ok, `foreign_key_check` empty, 0 Active sessions, no orphan rows, no duplicate or backwards timestamps, no gaming session, WAL gone |
+| Windows Application log | no error during the run |
+
+**Not covered, because the script does not do it** (so not part of R2):
+Start / Stop monitoring from the UI or tray, the Exit path (the script's
+header mentions an `-Exit` switch that does not exist), an elevated run, the
+installed copy. Those were validated earlier (Milestone 004 UI automation,
+Phases 6, 9 and 10) and are not claimed again here.
+
+Test infrastructure used outside the repository (not committed): a wrapper
+that runs the unchanged script and keeps its transcript, the read-only
+watcher and a read-only analysis script. Evidence is in
+`%TEMP%\wattscope-lifecycle-R2-20261004-210807`, the database in
+`%TEMP%\wattscope-validation-lifecycle-c96a6665`; neither is in git.
 
 ## Phase 3 -- long-session stability (soak)
 
