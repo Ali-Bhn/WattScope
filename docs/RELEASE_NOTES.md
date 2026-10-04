@@ -1,7 +1,7 @@
 # WattScope v0.1.0
 
-**Status: release candidate** (validation and documentation complete; not yet
-published, signed or distributed).
+**Status: pre-release (release candidate).** Validation and documentation are
+complete; the installer is unsigned.
 
 WattScope monitors your PC's electricity use on Windows, accumulates the
 energy and estimates what it costs. Gaming-session analytics are optional.
@@ -80,7 +80,10 @@ English, German and Persian (right-to-left). The installer is English only.
 | Platform | Windows 10/11, x64; per-machine install to `C:\Program Files\WattScope` (administrator approval required) |
 | Signature | none (unsigned) |
 
-The release artifact was built before a publication-only Git history rewrite, so its embedded build identifier (the sidecar's product version, `0.1.0+d472211...`) uses the corresponding pre-publication commit ID. In the published history that commit is `cd50c5d`.
+The installer's embedded build identifier (the sidecar's product version,
+`0.1.0+d472211...`) is an internal build id, not a commit id in this
+repository. The application source it was built from is the commit listed
+above.
 
 Verify before installing: `Get-FileHash .\WattScope_0.1.0_x64_en-US.msi`.
 Windows shows "Unknown publisher" because the installer is unsigned; this is
