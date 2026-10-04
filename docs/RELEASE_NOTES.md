@@ -76,11 +76,11 @@ English, German and Persian (right-to-left). The installer is English only.
 | File | `WattScope_0.1.0_x64_en-US.msi` |
 | Size | 37,928,960 bytes |
 | SHA-256 | `255CD48895E94F3554FB611EDED3EF9007D0FC5C234F8BD7371A302DCCFC1D85` |
-| Source (application) commit | `8faec3a439b3fec02c9b5e5dbdb8b4b65eb658bc` |
+| Source (application) commit | `cd50c5dfbe1f6a5e993b6bcb10dfc3d8dd1538b0` |
 | Platform | Windows 10/11, x64; per-machine install to `C:\Program Files\WattScope` (administrator approval required) |
 | Signature | none (unsigned) |
 
-The release artifact was built before a publication-only Git history rewrite, so its embedded build identifier (the sidecar's product version, `0.1.0+d472211...`) uses the corresponding pre-publication commit ID. In the published history that commit is `8faec3a`.
+The release artifact was built before a publication-only Git history rewrite, so its embedded build identifier (the sidecar's product version, `0.1.0+d472211...`) uses the corresponding pre-publication commit ID. In the published history that commit is `cd50c5d`.
 
 Verify before installing: `Get-FileHash .\WattScope_0.1.0_x64_en-US.msi`.
 Windows shows "Unknown publisher" because the installer is unsigned; this is
