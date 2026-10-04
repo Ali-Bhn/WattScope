@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-04, during pre-release validation (feature freeze) on
+Last updated: 2026-10-05 (Phase 16, release documentation), during pre-release validation (feature freeze) on
 top of Milestone 006.
 
 ## Status
@@ -25,7 +25,9 @@ top of Milestone 006.
   Phase 14 (the final automated regression, G1) is **done** and PASSED on
   `d472211` ("Phase 14" below).
   Phase 15 (the final MSI, G2) is **done** and PASSED ("Phase 15" below).
-  **Left before a release candidate:** the release documentation (G4).
+  Phase 16 (the release documentation, G4) is **done** and PASSED ("Phase 16"
+  below). **All required gates are complete; no release blocker; WattScope
+  v0.1.0 is RC-ready** (not published, signed, pushed or tagged).
 
 - **Milestone 006** -- Application Completion, UX Polish & Feature-Complete
   Candidate: **implemented; the application is FEATURE COMPLETE** (see the
@@ -854,7 +856,36 @@ version exists).
 **G2 is PASSED.** The SHA-256 above is frozen; G4 documents this exact file.
 If the MSI is rebuilt for any reason, the hash changes and G2 must be redone.
 Remaining required release work: **G4** (README, release notes, known
-limitations).
+limitations) -- done in Phase 16.
+
+## Phase 16 -- release documentation (G4) and RC closure -- PASSED
+
+2026-10-05. Documentation only (HEAD `cf124c9` before the commit; application
+source `d472211`). Changed: `README.md` (user-facing product description,
+MEASURED / ESTIMATED / UNAVAILABLE, requirements, installation, measurement
+limitations, privacy, gaming wording; developer material kept below a
+"For developers" heading), new `docs/RELEASE_NOTES.md` (installer filename,
+size, SHA-256 and source commit; known limitations), the checklist (G4 and the
+release-candidate determination) and this file. No code, test, configuration,
+dependency or version change; nothing built, installed, run or pushed.
+
+The frozen MSI `WattScope_0.1.0_x64_en-US.msi` (37,928,960 bytes) was hashed
+before and after: SHA-256 `255CD48895E94F3554FB611EDED3EF9007D0FC5C234F8BD7371A302DCCFC1D85`,
+unchanged.
+
+Wording decisions: privacy describes WattScope's own behaviour (local SQLite,
+no account, no telemetry sent by WattScope) and says WebView2/Windows may make
+their own connections (see Phase 9: one unexplained WebView2 connection was
+observed); gaming is described as passive and the anti-cheat boundary as a
+design property, with no compatibility claim; Modern Standby is stated as not
+tested (hardware lacks S0 Low Power Idle), not as a failure; unrelated
+validation observations (for example the 0xc0000142 popup, Known issue 10)
+are deliberately not in the user documents.
+
+**Result:** every required gate is PASSED (R6 an accepted non-blocker), no
+release blocker, and the remaining UNVERIFIED items are optional, deferred or
+hardware-limited (listed in the checklist). **v0.1.0 is RC-ready.** Publication
+(push, tag, release, upload, signing) is a separate, not-yet-done step.
 
 ## Phase 3 -- long-session stability (soak)
 

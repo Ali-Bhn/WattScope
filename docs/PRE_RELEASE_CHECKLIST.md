@@ -126,7 +126,7 @@ historical. "Either installer" below now means the MSI.
 | G1 | Final automated regression on the candidate commit (section 0) | PASSED 2026-10-04 (Phase 14) on application candidate `d472211` (HEAD `67fa62d`; the two commits after it change only `docs/PRE_RELEASE_CHECKLIST.md` and `docs/PROJECT_STATE.md`): `dotnet test WattScope.slnx` 418/418 (Core 221, Storage 72, Hardware 22, Probe 103; 0 failed, 0 skipped); `npm test` 191/191 in 13 files; `npm run typecheck` and `npm run build` clean; `cargo test` 15/15; product version `0.1.0` in all four places and the built sidecar reads FileVersion `0.1.0.0`. No MSI built (that is G2) |
 | G2 | Final MSI built from that commit (MSI only, see section C); SHA-256 recorded | PASSED 2026-10-05 (Phase 15): built from a detached clean worktree of exactly `d472211` (`npm ci`, `publish-probe.ps1`, `npm run tauri build`). **`WattScope_0.1.0_x64_en-US.msi`, 37,928,960 bytes, SHA-256 `255CD48895E94F3554FB611EDED3EF9007D0FC5C234F8BD7371A302DCCFC1D85`** (FROZEN; unsigned). ProductVersion `0.1.0`; packaged host `0.1.0`; packaged sidecar FileVersion `0.1.0.0`, ProductVersion `0.1.0+d472211f9b1c038fe2823b7e00199c8522aba840`. Payload is exactly `wattscope.exe` and `wattscope-probe.exe`. Preserved at `C:\Users\Administrator\Desktop\wattScope-release\` (not in git). Details: `PROJECT_STATE.md` Phase 15. Not installed (no install is required by G2) |
 | G3 | One product version everywhere | PASSED 2026-10-04 (Phase 11): product version `0.1.0` in `package.json`, `Cargo.toml`, `tauri.conf.json` and, new, `Directory.Build.props` for every .NET project; the sidecar is built as assembly / file version `0.1.0.0` (the four-part Windows form) with informational version `0.1.0+<commit>`, read back from the built binary. `ProductVersionTests` fails if they drift. To re-read from the installed files once the final MSI (G2) exists |
-| G4 | README / release notes / known limitations updated | UNVERIFIED |
+| G4 | README / release notes / known limitations updated | PASSED 2026-10-05 (Phase 16): `README.md` rewritten as user-facing product documentation (monitoring first, gaming optional; MEASURED / ESTIMATED / UNAVAILABLE; requirements; installation; measurement limitations; privacy; conservative gaming wording); new `docs/RELEASE_NOTES.md` (highlights, installer filename / size / SHA-256 / source commit, known limitations). README, release notes, checklist and `PROJECT_STATE.md` were compared for version, MSI name, SHA-256, commit, signing, startup and privacy wording. Documentation only; the frozen MSI was not touched |
 
 ## Required before the release candidate (decided 2026-10-02)
 
@@ -143,6 +143,26 @@ historical. "Either installer" below now means the MSI.
 ## Release blockers found so far
 
 **None.**
+
+## Release-candidate determination (2026-10-05, Phase 16)
+
+**Required gates** (sections 0 and G, and R1-R7): all PASSED or, for R6,
+ACCEPTED NON-BLOCKER -- R1, R2, R3, R4, R5, R7, G1, G2, G3, G4, F3. No required
+item is UNVERIFIED. **Release blockers: none.**
+
+**Remaining UNVERIFIED / PARTLY items are optional, deferred or
+hardware-limited, and none is a required gate:** A3, A4 (real undetected game),
+A5 (FPS; no FPS claim is made), A6 (no anti-cheat claim is made), A9, A10; B2,
+B4 (second launch while elevated); C3 (upgrade, no earlier version exists; do it
+before the first update ships), C6, C10 (SmartScreen on a downloaded copy), C11,
+C12; D6 (Modern Standby: **not testable** on this PC, no S0 Low Power Idle;
+accepted limitation, not a failure); E1, E2 (visual confirmation), E4b, E5. Each
+is stated in the user-facing known limitations where it matters.
+
+**WattScope v0.1.0 is RC-ready** (validation and documentation complete). This is
+not a published release: nothing is pushed, tagged, signed or uploaded. The
+frozen MSI is `WattScope_0.1.0_x64_en-US.msi`, SHA-256
+`255CD48895E94F3554FB611EDED3EF9007D0FC5C234F8BD7371A302DCCFC1D85`.
 
 ## Known issues (non-blocking), found in pre-release validation
 

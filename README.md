@@ -1,20 +1,128 @@
 # WattScope
 
-A Windows desktop application for monitoring computer energy consumption,
-estimating electricity costs, and analyzing gaming sessions.
+A Windows desktop application that continuously monitors how much electricity
+your PC uses, accumulates the energy over time and estimates what it costs.
+Gaming-session analytics are an optional extra on top of that.
 
-**Implemented so far:** Milestone 001 (hardware discovery and power-sensor
-validation), Milestone 002 (energy calculation, electricity cost, SQLite
-persistence), and Milestone 003 (sub-bucket electricity pricing and the
-first desktop application, `desktop/`), and Milestone 004 (tray, single
-instance, monitoring/sidecar lifecycle), Milestone 005 (gaming session
-detection and energy analytics) and Milestone 006 (application completion:
-reports, settings, price history, first run, diagnostics, data management) --
-see `docs/PROJECT_STATE.md`. The application is feature complete and in
-pre-release validation: a real game, an Administrator launch, the MSI
-installer lifecycle and Windows sign-out / restart / shutdown / sleep have
-been validated on the development machine. What is still open or unverified
-is listed in `docs/PRE_RELEASE_CHECKLIST.md`.
+**Version 0.1.0 -- release candidate.** Release notes, the installer checksum
+and the known limitations are in [`docs/RELEASE_NOTES.md`](docs/RELEASE_NOTES.md).
+
+## What it does
+
+- **Continuous monitoring** of CPU and GPU power, one reading per second,
+  running quietly in the system tray when you close the window.
+- **Energy accumulation** in kWh, per monitoring session, day and month.
+- **Electricity cost** from the price(s) per kWh you enter (price history is
+  supported). A cost is shown only when the estimate is complete and a price
+  exists; otherwise you see `--`.
+- **History and reports**: past sessions, daily and monthly reports.
+- **Optional gaming analytics**: detects a running game and reports the energy
+  and estimated cost of that gaming session (see "Gaming analytics" below).
+- **Local storage**: everything is kept in a SQLite database on your PC.
+- **Languages**: English, German and Persian (with right-to-left layout).
+- **Windows only** (see "System requirements").
+
+## Measured, estimated, unavailable
+
+WattScope labels every figure with how it was obtained:
+
+- **MEASURED** -- read from a hardware sensor: CPU package power and GPU board
+  power, when your machine and drivers expose them.
+- **ESTIMATED** -- calculated. WattScope does **not** measure power at the wall
+  socket. The "system" / wall-power figure is an estimate built from the measured
+  CPU and GPU power plus assumptions you can change in Settings: a constant for
+  everything else in the PC ("other system power": motherboard, RAM, storage,
+  fans) and a power-supply efficiency. The defaults (50 W, 90 %) are
+  placeholders, not measurements of your machine.
+- **UNAVAILABLE** -- the sensor could not be read. This is shown as `--`, never
+  as 0.
+
+When an input is unavailable the estimate is **Partial**: it is shown as a
+lower bound, kept separate from Complete figures, and **no cost is calculated
+for it**. A Partial figure is never presented as a Complete one.
+
+## System requirements
+
+- Windows 10 or 11, 64-bit. No other operating system is supported.
+- Microsoft Edge WebView2 runtime. It is included with current Windows 10/11;
+  if it is missing, the installer tries to download Microsoft's bootstrapper,
+  which needs an internet connection (this case has not been tested).
+- Which sensors exist varies from PC to PC. GPU board power is measured when a
+  valid sensor exists (NVIDIA via NVML was validated); CPU package power may be
+  unavailable, or may need administrator rights, depending on the CPU and
+  system.
+
+No minimum RAM, CPU or disk size has been defined or tested.
+
+## Installation
+
+The installer is `WattScope_0.1.0_x64_en-US.msi` (per-machine, installs to
+`C:\Program Files\WattScope`, and needs administrator approval). Its SHA-256 is
+published in [`docs/RELEASE_NOTES.md`](docs/RELEASE_NOTES.md); compare it
+before installing (`Get-FileHash .\WattScope_0.1.0_x64_en-US.msi`).
+
+The installer is **not code-signed yet**, so Windows shows "Unknown
+publisher" in its permission prompt, and may show a SmartScreen notice for a
+downloaded file. That reflects the missing signature, not a problem found in
+the file. Continue only if you obtained the installer from a source you trust
+and the checksum matches, and use the standard Windows prompt options.
+
+Uninstalling removes the program but keeps your history in
+`%LOCALAPPDATA%\WattScope`. The installer interface is English only.
+
+## Using it
+
+WattScope runs only when you start it; it does **not** start with Windows and
+installs no service. Closing the window hides it to the system tray and
+monitoring continues; use the tray's *Exit WattScope* (or Settings -> *Exit
+WattScope*) to stop it. Starting it a second time just shows the running window.
+
+WattScope never elevates itself. Started normally, GPU power works and, on
+machines where CPU package power needs administrator rights, monitoring shows
+"Partial monitoring" with no cost. For complete CPU monitoring, start
+`wattscope.exe` yourself with *Run as administrator*.
+
+## Measurement limitations
+
+- CPU package power may be unavailable on some machines or without
+  administrator rights. WattScope then keeps running in Partial mode.
+- Some sensors report an implausible 0 W. WattScope rejects such readings
+  instead of storing them as a real measurement.
+- Monitors/displays and external devices (peripherals, speakers, network
+  gear) are not measured; WattScope has no meter input for them.
+- The system/wall figure depends on your "other system power" and PSU
+  efficiency assumptions, so treat it as an estimate, not as the reading of a
+  calibrated wall meter. Better assumptions give better estimates.
+- Sensor coverage differs between PCs; do not expect the same figures on
+  every machine.
+
+## Privacy
+
+WattScope is local-first. Monitoring history, prices and settings are stored in
+a SQLite database on your PC (`%LOCALAPPDATA%\WattScope\wattscope.db`). It needs
+no account and no cloud service, and WattScope itself does not send usage
+data or telemetry anywhere. This describes WattScope's own behaviour; the
+Windows components it runs on (such as the WebView2 runtime) are separate
+software and may make their own network connections.
+
+## Gaming analytics (optional)
+
+WattScope can recognise a running game and report the energy and estimated cost
+of that session. It is passive: it reads the operating system's ordinary list
+of running programs and the power readings it already collects. It does not
+inject code into games, hook them, read their memory, modify game files,
+simulate input or touch network traffic. This is how the feature is built, **not
+a guarantee about any anti-cheat system**: WattScope has not been tested against
+specific anti-cheat products and makes no compatibility claim. If a game or
+anti-cheat vendor objects to monitoring software, do not run WattScope with it.
+Details: [`docs/GAMING.md`](docs/GAMING.md).
+
+---
+
+# For developers
+
+Implementation status and validation history: `docs/PROJECT_STATE.md`;
+remaining real-world validation: `docs/PRE_RELEASE_CHECKLIST.md`.
 
 ## Projects
 
@@ -43,7 +151,7 @@ policy, and real findings from a development machine,
 `docs/ENERGY_MODEL.md` for the energy/estimation/cost rules, and
 `docs/STORAGE.md` for the database.
 
-## Requirements
+## Build requirements
 
 - Windows 10/11 x64
 - .NET 10 SDK
