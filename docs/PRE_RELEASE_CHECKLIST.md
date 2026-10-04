@@ -115,7 +115,7 @@ historical. "Either installer" below now means the MSI.
 |---|---|---|
 | F1 | Open a **copy** of the real (schema 4) database with the release build: sessions and totals intact, integrity ok | PASSED 2026-10-02 (CLI, sidecar protocol and the UI) |
 | F2 | Settings -> Data -> *Delete old history* on that **copy**: preview matches what disappears; running session and prices untouched | PASSED 2026-10-02 (protocol on one copy, the real UI on another; sessions were aged on the copy to make them eligible) |
-| F3 | A long (hours) real session: database/WAL growth, memory over time (no leak) | PARTLY: 110-minute scripted soak on 2026-10-02 (`desktop/scripts/soak.ps1`): 9 processes throughout, no handle/thread/DOM/listener growth, WAL plateaus at ~4 MiB, 0 gaps, integrity ok; small private-memory rise (sidecar +1.7 MiB/h, WebView2 +5.8 MiB/h, step-shaped) that 110 minutes cannot classify. **Multi-hour run pending:** `soak.ps1 -Minutes 240` |
+| F3 | A long (hours) real session: database/WAL growth, memory over time (no leak) | PASSED 2026-10-04, see the end of this cell. First, 110-minute scripted soak on 2026-10-02 (`desktop/scripts/soak.ps1`): 9 processes throughout, no handle/thread/DOM/listener growth, WAL plateaus at ~4 MiB, 0 gaps, integrity ok; small private-memory rise (sidecar +1.7 MiB/h, WebView2 +5.8 MiB/h, step-shaped) that 110 minutes cannot classify. **PASSED 2026-10-04 (Phase 12, R1):** 240-minute soak on `d472211`; WAL plateaus at ~4 MiB, database 396 KiB; WebView2 private memory flat (+0.07 MiB/h); the sidecar's rose from 50 to ~61 MiB in the first three hours and was flat in the last (-0.2 MiB/h); no leak shown. On a scratch database, unelevated (Partial); a multi-hour **Complete** (elevated) session and a run longer than four hours were not done |
 | F4 | *(added)* Retention on the copy: only raw samples older than the retention are pruned; totals, costs, sessions untouched | PASSED 2026-10-02 |
 | F5 | *(added)* The original database is provably unmodified by all of the above (size, modification time, SHA-256) | PASSED 2026-10-02 |
 
@@ -132,7 +132,7 @@ historical. "Either installer" below now means the MSI.
 
 | # | Item | Status |
 |---|---|---|
-| R1 | The 4-hour soak (`soak.ps1 -Minutes 240`), deferred until the machine can be left unused for four hours | UNVERIFIED |
+| R1 | The 4-hour soak (`soak.ps1 -Minutes 240`), deferred until the machine can be left unused for four hours | PASSED 2026-10-04 (Phase 12) on `d472211`, scratch database, unelevated, **PC in normal use** (a real game ran for the first 81 minutes): 240.2 min, one Partial session ended `Stopped`, 14,410 samples at 1.0000 /s, 0 gaps, stored energy equal to a recomputation from the raw samples, integrity ok, 9 processes throughout, no memory / handle / thread / DOM growth. Details and what was not covered: `PROJECT_STATE.md`, Phase 12 |
 | R2 | One final **unattended** lifecycle run (`validate-lifecycle.ps1`, nobody using the desktop) | UNVERIFIED |
 | R3 | Focus loss when a busy button disables itself: preferably fixed, first investigating a shared UI primitive instead of patching every button; no broad risky change | PASSED 2026-10-04 (Phase 11): defect confirmed and fixed with one shared primitive (`ActionButton`); what is left is in Known issues 1 |
 | R4 | Sidecar session version `1.0.0.0` vs app version `0.1.0`: resolve or explicitly disposition | PASSED 2026-10-04 (Phase 11): the sidecar is now version `0.1.0` (stamped as `0.1.0.0`); see G3 |

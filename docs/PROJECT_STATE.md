@@ -19,7 +19,9 @@ top of Milestone 006.
   fabricated time or energy, no self-start; sessions ended by Windows are
   recovered as Interrupted ("Phase 10" below). Phase 11 (the short pre-RC
   items R3-R7 and the product version, G3) is **done** ("Phase 11" below).
-  **Left before a release candidate:** the 4-hour soak (R1), the final
+  Phase 12 (the 4-hour soak, R1) is **done** and PASSED on `d472211`
+  ("Phase 12" below).
+  **Left before a release candidate:** the final
   unattended lifecycle run (R2), the final regression (G1), the final MSI
   (G2) and the release documentation (G4).
 
@@ -67,8 +69,9 @@ accessibility) were run on 2026-10-02, followed the same day by the user-run
 Phase 6 (Administrator) and Phase 7 (real Warzone). Phase 8 (FPS) was
 cancelled, Phase 9 (installers, MSI only) was done on 2026-10-02/03 and
 Phase 10 (Windows session lifecycle) on 2026-10-04, and Phase 11 (pre-RC
-disposition of R3-R7 and G3) the same day. **Of the release-candidate work,
-R1, R2, G1, G2 and G4 have not been started.**
+disposition of R3-R7 and G3) the same day, followed by Phase 12 (the 4-hour
+soak, R1). **Of the release-candidate work, R2, G1, G2 and G4 have not been
+started.**
 
 **Release blockers found: none.** Two defects were fixed in Phases 1-5 (a
 test-script race and high-contrast marking) and three known issues in
@@ -610,13 +613,90 @@ passed, 0 failed, 0 skipped (Core 221, Storage 72, Hardware 22, Probe 103;
 412 before this phase, +6); frontend `npm test` **191** passed in 13 files
 (183 before, +8), `npm run typecheck` and `npm run build` clean; `cargo test`
 **15** passed. These are the phase's own runs, not the final regression (G1).
+
+## Phase 12 -- four-hour soak (R1, automated) -- PASSED
+
+2026-10-04, candidate `d472211`, tree clean, no code changed. The binaries in
+`target/release` were still those of `5ca97f7`, so they were rebuilt first
+(`publish-probe.ps1`, `tauri build --no-bundle`; no MSI): sidecar stamped
+`0.1.0+d472211...`, SHA-256 `12D044E0...ACC7B0BA8`; host SHA-256
+`880EA144...166640E5`. A 3-minute run of the same script was used as a
+preflight.
+
+Command: `soak.ps1 -Minutes 240 -WebViewDebugPort 9333`. Scratch database
+(the real one has the same size, time and SHA-256 before and after),
+unelevated, 1 s sampling. Started 17:00:27, ended 21:00:40 local time:
+**240.2 minutes**, not ended early, exit code 0.
+
+**The PC was in normal use**, not idle: Call of Duty was running when the
+soak started and for its first 81 minutes, and nothing was done to keep the
+machine idle afterwards (GPU power ranged from 41 to 305 W). "Left unused" in R1 was a scheduling note; the soak measures
+WattScope's own processes and database, and nothing in it depends on an idle
+machine. No sleep, sign-out, restart or shutdown occurred (System event log).
+
+| | Result |
+|---|---|
+| Session | one, `Stopped` (the sidecar closed it by itself when the host was ended), no Active one left |
+| Samples | 14,410 in 14,409.0 s = 1.0000 /s; interval median 999 ms, 1st-99th percentile 984-1016 ms, minimum 888, maximum 1120 ms; none duplicated or backwards |
+| Gaps | 0. Monitored time 14,408.999 s = the first-to-last-sample span |
+| GPU energy | 483.558 Wh, coverage 100 %; recomputed from the raw samples: difference 0.75 J of 1,740,807 J |
+| Partial estimate | 759.647 Wh (lower bound); recomputed: difference 0.85 J. Equals (GPU + 50 W x time) / 0.9 in every bucket |
+| CPU / Complete | no CPU reading (`ImplausibleZero` on all 14,410 samples, value NULL, never 0), so 0 Wh Complete and no cost: the documented unelevated behaviour |
+| Availability | one run per channel, closed, matching every sample |
+| Gaming | the real game was detected once (catalog), ended `ProcessExited` after 81 min; its energy agrees with the raw samples of its span; no Complete energy |
+| Database | `integrity_check` ok, `foreign_key_check` empty, schema 4, no orphan rows, 432 KiB (17 buckets), free list 0; WAL at ~4 MiB from minute ~25, gone after the clean close |
+| Flushes | 1,362, 0 failures, average 0.58 ms, maximum 7.4 ms |
+| Provider read | average 8.9 ms, maximum 823 ms (once; no gap resulted) |
+
+Resources, one reading per minute, slopes by least squares after the
+10-minute warm-up (230 readings):
+
+| | At 10 min | Last | Min | Max | Slope / hour | Last hour |
+|---|---|---|---|---|---|---|
+| Host private MiB | 7.67 | 8.41 | 7.41 | 8.43 | +0.30 | 0.00 |
+| WebView2 tree private MiB | 201.5 | 199.7 | 190.5 | 219.0 | +0.07 | -1.3 |
+| Sidecar private MiB | 49.9 | 61.1 | 49.9 | 61.8 | +1.25 | -0.18 |
+| Total private MiB | 259.1 | 269.2 | 252.9 | 288.2 | +1.6 | -1.5 |
+| Handles host / WebView2 / sidecar | 360 / 3394 / 491 | 354 / 3359 / 491 | | 360 / 3422 / 537 | -2 / -21 / -5 | |
+| Threads host / WebView2 / sidecar | 49 / 233 / 20 | 40 / 205 / 12 | | | falling | |
+| Processes | 9 | 9 | 9 | 9 | 0 | |
+
+- Working sets fell throughout (WebView2 384 -> 160 MiB, sidecar 100 -> 29).
+- **Page** (49 readings through the DevTools port, after a forced GC): JS heap
+  2.3-2.9 MiB; DOM nodes 236 and listeners 151 at every reading after the
+  first (292 / 155 while the first-run dialog was open); one document.
+- **CPU** after warm-up, % of one core: host 0.06, WebView2 0.63, sidecar
+  0.26.
+- **Reading.** No process, handle, thread or page growth. The WebView2 rise
+  of Phase 3 did not continue: flat over four hours. The sidecar's private
+  memory rose from 50 to about 61 MiB during the first three hours, in steps,
+  and did not rise in the last hour. Four hours show no leak; they cannot
+  exclude growth that only appears over days.
+
+Observations, none of them a WattScope failure:
+
+- The first-run dialog was confirmed 3 min 41 s after launch, not by the test
+  (the user, or a keystroke as in Known issue 6).
+- **Windows Explorer crashed and was restarted by Windows at 20:37**
+  (`Explorer.EXE`, access violation in `Microsoft.UI.Xaml.dll`). WattScope is
+  not named in the event and kept sampling without a gap. Whether its tray
+  icon came back after the shell restart was **not checked**.
+
+**Not covered:** an elevated (Complete) multi-hour session, the installed
+copy and the real database, a run longer than four hours, the window hidden
+in the tray. Test infrastructure used outside the repository (not
+committed): a wrapper around `soak.ps1`, a DevTools poller and a read-only
+analysis script. Evidence (CSV, log, page readings, analysis) is in
+`%TEMP%\wattscope-soak-R1-20261004-170027`, the database in
+`%TEMP%\wattscope-validation-soak-c0452bc2`; neither is in git.
+
 ## Phase 3 -- long-session stability (soak)
 
 `desktop/scripts/soak.ps1` (new, reproducible): packaged app, scratch
 database, dashboard visible, 1 s sampling, one sample of every process group
 per minute, trends by least squares after a 10-minute warm-up. **110.2
-minutes** were run; a multi-hour run is still **pending** (`soak.ps1 -Minutes
-240`, checklist F3).
+minutes** were run here; the multi-hour run (`soak.ps1 -Minutes 240`,
+checklist F3 / R1) was done later, see "Phase 12".
 
 | After warm-up (100 samples) | First | Last | Min | Max | Slope / hour |
 |---|---|---|---|---|---|
