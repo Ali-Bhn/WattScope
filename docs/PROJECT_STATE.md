@@ -24,8 +24,8 @@ top of Milestone 006.
   **done** and PASSED on the same binaries ("Phase 13" below).
   Phase 14 (the final automated regression, G1) is **done** and PASSED on
   `d472211` ("Phase 14" below).
-  **Left before a release candidate:** the final MSI (G2) and the release
-  documentation (G4).
+  Phase 15 (the final MSI, G2) is **done** and PASSED ("Phase 15" below).
+  **Left before a release candidate:** the release documentation (G4).
 
 - **Milestone 006** -- Application Completion, UX Polish & Feature-Complete
   Candidate: **implemented; the application is FEATURE COMPLETE** (see the
@@ -73,8 +73,8 @@ cancelled, Phase 9 (installers, MSI only) was done on 2026-10-02/03 and
 Phase 10 (Windows session lifecycle) on 2026-10-04, and Phase 11 (pre-RC
 disposition of R3-R7 and G3) the same day, followed by Phase 12 (the 4-hour
 soak, R1), Phase 13 (the final lifecycle run, R2) and Phase 14 (the final
-automated regression, G1). **Of the release-candidate work, G2 and G4 have
-not been started.**
+automated regression, G1) and Phase 15 (the final MSI, G2). **Of the
+release-candidate work, only G4 (release documentation) is left.**
 
 **Release blockers found: none.** Two defects were fixed in Phases 1-5 (a
 test-script race and high-contrast marking) and three known issues in
@@ -779,6 +779,81 @@ makes the MSI's stamp equal to the validated candidate; building at HEAD would
 stamp a documentation commit that no soak or lifecycle run exercised.
 
 Remaining: G2 (final MSI, SHA-256) and G4 (README, release notes, known
+limitations).
+
+## Phase 15 -- final MSI (G2) -- PASSED
+
+2026-10-05. Main repository: `master`, HEAD `a0a670a`, tree clean, no remote;
+the three commits after `d472211` change only `docs/PRE_RELEASE_CHECKLIST.md`
+and `docs/PROJECT_STATE.md`. The MSI was built in a temporary detached
+worktree of exactly `d472211f9b1c038fe2823b7e00199c8522aba840` (clean before
+and after the build; removed afterwards; the main working tree was never
+touched). The fresh checkout had no generated outputs (`node_modules`, `dist`,
+`target`, `binaries` are git-ignored), so nothing stale could be reused.
+Commands (in `desktop/`): `npm ci`; `scripts\publish-probe.ps1`;
+`npm run tauri build`. Configuration confirmed: version `0.1.0` in
+`package.json`, `Cargo.toml`, `tauri.conf.json`, `Directory.Build.props`;
+`bundle.targets` = `["msi"]`. One bundle was produced; no signing, upload or
+release.
+
+**Final artifact (FROZEN)**
+
+| | |
+|---|---|
+| File | `WattScope_0.1.0_x64_en-US.msi` |
+| Stable copy | `C:\Users\Administrator\Desktop\wattScope-release\WattScope_0.1.0_x64_en-US.msi` (outside git; SHA-256 verified identical to the build output) |
+| Size | 37,928,960 bytes |
+| SHA-256 | `255CD48895E94F3554FB611EDED3EF9007D0FC5C234F8BD7371A302DCCFC1D85` |
+| Signature | none (unsigned: known non-blocker) |
+
+**MSI metadata** (read, not modified): ProductName `WattScope`, ProductVersion
+`0.1.0`, Manufacturer `wattscope`, ProductCode `{315626AC-3741-4DAE-9ADC-DD291A25AA30}`
+(new per build; Phase 9 had `{6EBA3712-...}`), UpgradeCode
+`{F6A26AA7-10F8-5652-890E-BB809C7121AD}` (unchanged from Phase 9), platform
+x64, ALLUSERS=1 (per-machine), language 1033, Add/Remove Programs
+modify/repair disabled (as in Phase 9).
+
+**Packaged binaries** (administrative extraction, `msiexec /a`; nothing
+installed). The payload is exactly two files:
+
+| File | Size | SHA-256 | Version |
+|---|---|---|---|
+| `wattscope.exe` | 4,755,456 | `A988433C03FFF6E9D0395B9E7803448727FB69562893AEFBF0C099880760B9A9` | File/Product `0.1.0` |
+| `wattscope-probe.exe` | 82,143,676 | `FBAD564D933DC0B4D895116E66FD84EE8D4FC4F41049628A234D300C552EE66F` | FileVersion `0.1.0.0`, ProductVersion `0.1.0+d472211f9b1c038fe2823b7e00199c8522aba840` |
+
+The sidecar's commit stamp is `d472211`, as G2 requires.
+
+**Comparison with the R1/R2 binaries.** The hashes differ (host
+`880EA144...166640E5`, sidecar `12D044E0...ACC7B0BA8`); this is explained, not a
+defect. Source commit, versions, sidecar stamp, lockfiles (clean worktree) and
+configuration are identical. The sidecar embeds the absolute build path: the R2
+sidecar has 4 references to `...\Desktop\wattScope\`, the new one 4 to
+`...\Desktop\wattScope-g2-build\` instead. The host differs in 4,337 of
+4,755,456 bytes (same length), the first at the PE header, including the PE
+build timestamp, and Tauri also patches the bundle type (`msi`) into the
+packaged exe. This is ordinary build nondeterminism, **not byte-proven** (no
+bit-for-bit rebuild at the original path was attempted). The R1/R2 evidence
+therefore applies to the same source and configuration, not to these exact
+bytes; Phase 9 already validated the MSI lifecycle, and no manual re-run is
+required by G2.
+
+**Sanity.** The MSI is structurally readable; no scratch database, validation
+evidence, source, logs or test files are packaged; no credentials (the
+sidecar's only matches for "key" / "secret" patterns are .NET API identifiers
+such as `apiKey` and `SecretKey`). The binaries embed build paths
+(`...\.cargo\registry\...` in the host, `...\obj\Release\` in the sidecar):
+ordinary compiler debug/source-path strings, **known non-blocker**, no
+packaged configuration contains a development path.
+
+**Classification.** Release blockers: none. Known non-blockers unchanged:
+unsigned / Unknown Publisher, lowercase manufacturer `wattscope`, English-only
+installer, UpgradeCode is Tauri's default, WebView2 profile kept on uninstall,
+same-version reinstall offers only Remove (C3 still UNVERIFIED until a second
+version exists).
+
+**G2 is PASSED.** The SHA-256 above is frozen; G4 documents this exact file.
+If the MSI is rebuilt for any reason, the hash changes and G2 must be redone.
+Remaining required release work: **G4** (README, release notes, known
 limitations).
 
 ## Phase 3 -- long-session stability (soak)
