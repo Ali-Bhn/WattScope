@@ -85,12 +85,12 @@ historical. "Either installer" below now means the MSI.
 
 | # | Item | Status |
 |---|---|---|
-| D1 | Windows **shutdown** with monitoring running: session closed cleanly or recovered as Interrupted on next launch, no orphan sidecar, database not corrupt | UNVERIFIED |
-| D2 | Windows **restart** | UNVERIFIED |
-| D3 | Windows **log off** | UNVERIFIED |
-| D4 | Real sleep/resume (verified once in M004, session #18; repeat on the release build) | re-verify |
-| D5 | *(added)* After D1-D3: WattScope did **not** start by itself; launching it by hand works; exactly one Active session | UNVERIFIED |
-| D6 | *(added)* Sleep whose notification is missed / Modern Standby (covered only by the elapsed-time-fallback tests; this PC delivered the notification) | UNVERIFIED (needs other hardware; accepted limitation candidate) |
+| D1 | Windows **shutdown** with monitoring running: session closed cleanly or recovered as Interrupted on next launch, no orphan sidecar, database not corrupt | PASSED 2026-10-04 (Fast Startup shutdown, PC off 66 min; session #28 recovered as Interrupted at its last observation; integrity ok; `PROJECT_STATE.md` Phase 10) |
+| D2 | Windows **restart** | PASSED 2026-10-04 (full boot, window hidden in the tray; session #27 recovered as Interrupted) |
+| D3 | Windows **log off** | PASSED 2026-10-04 (session #26 recovered as Interrupted) |
+| D4 | Real sleep/resume (verified once in M004, session #18; repeat on the release build) | PASSED 2026-10-04 on the installed build (S3, 5 min 3 s; same session #29, one `Suspend` gap, nothing integrated across it). Not tried: window hidden in the tray, an elevated session, hibernate |
+| D5 | *(added)* After D1-D3: WattScope did **not** start by itself; launching it by hand works; exactly one Active session | PASSED 2026-10-04 after each of D1-D3 |
+| D6 | *(added)* Sleep whose notification is missed / Modern Standby (covered only by the elapsed-time-fallback tests; this PC delivered the notification) | UNVERIFIED -- **not testable on this PC** (`powercfg /a`: S3 only, no S0 Low Power Idle); needs other hardware; accepted limitation candidate |
 
 ## E. Desktop shell, by eye
 
@@ -174,3 +174,18 @@ historical. "Either installer" below now means the MSI.
    the tray shows "Estimated power: 118.5 W" without `>=`. The status line
    above it says "partial" and the session line has `>=`; wording only
    (found in Phase 7).
+8. **A Windows sign-out, restart or shutdown ends the session as
+   `Interrupted`, not `Stopped`** (Phase 10, all three tests, window open or
+   hidden). Windows ends the processes before the session is closed; the next
+   launch recovers it at its last persisted observation. Nothing is
+   estimated: up to about one persistence interval (~10 s) of real monitoring
+   just before the event is absent. Data-safe and honest; the label differs
+   from what the code comments describe for this path.
+9. **No notice is shown when a previous session was recovered** as
+   Interrupted on launch (Phase 10; the sidecar reports it, the UI does not
+   surface it).
+10. **Open observation:** a `powershell.exe` "application was unable to start
+    correctly (0xc0000142)" popup was logged by Windows during the sign-out
+    and the restart, not during the shutdown. WattScope never starts
+    PowerShell and no evidence links the popup to it; its source was not
+    identified.

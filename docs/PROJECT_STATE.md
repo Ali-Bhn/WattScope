@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-10-03, during pre-release validation (feature freeze) on
+Last updated: 2026-10-04, during pre-release validation (feature freeze) on
 top of Milestone 006.
 
 ## Status
@@ -14,8 +14,11 @@ top of Milestone 006.
   by audit, v0.1.0 now ships **MSI only**, and the MSI passed static
   inspection and a real install / run / uninstall / reinstall / uninstall
   lifecycle with the history preserved (details and what stays unverified in
-  "Phase 9" below). Phases 10-12 (shutdown/restart/logoff, release candidate)
-  not started.
+  "Phase 9" below). Phase 10 (Windows sign-out, restart, shutdown and
+  sleep on the installed build) is **done** and PASSED: no corruption, no
+  fabricated time or energy, no self-start; sessions ended by Windows are
+  recovered as Interrupted ("Phase 10" below). The release-candidate work
+  (checklist sections R and G) has not been started.
 
 - **Milestone 006** -- Application Completion, UX Polish & Feature-Complete
   Candidate: **implemented; the application is FEATURE COMPLETE** (see the
@@ -23,7 +26,8 @@ top of Milestone 006.
   real-world validation is **deliberately deferred** and **UNVERIFIED** --
   `docs/PRE_RELEASE_CHECKLIST.md`. Real Warzone, FPS impact, Administrator
   Complete sessions, installing/upgrading/uninstalling, shutdown/restart/logoff
-  were not run.
+  were not run. *(That was the state at the end of Milestone 006; most of it
+  has since been validated -- see "Pre-release validation" below.)*
 
 - **Milestone 001** -- complete (details below, unchanged).
 - **Milestone 002** -- Energy Calculation, Electricity Cost & Persistent
@@ -58,16 +62,16 @@ limited to verified fixes, test infrastructure and documentation. Phases 1-5
 (automated gate, flaky test, soak, real-database rehearsal, production UI and
 accessibility) were run on 2026-10-02, followed the same day by the user-run
 Phase 6 (Administrator) and Phase 7 (real Warzone). Phase 8 (FPS) was
-cancelled, Phase 9 (installers, MSI only) was done on 2026-10-02/03. **Phases
-10-12 (shutdown/restart/logoff, release candidate) have not been started** and
-stay UNVERIFIED in `docs/PRE_RELEASE_CHECKLIST.md`.
+cancelled, Phase 9 (installers, MSI only) was done on 2026-10-02/03 and
+Phase 10 (Windows session lifecycle) on 2026-10-04. **The release-candidate
+work (checklist sections R and G) has not been started.**
 
 **Release blockers found: none.** Two defects were fixed (a test-script race
 and high-contrast marking); the known non-blocking issues are listed in the
 checklist.
 
 Every run of Phases 1-5 used a scratch database (`WATTSCOPE_DB`, path printed
-and checked first); Phases 6, 7 and 9 deliberately ran against the normal
+and checked first); Phases 6, 7, 9 and 10 deliberately ran against the normal
 database, as their sections say. For Phases 1-5 the real database
 (`%LOCALAPPDATA%\WattScope\wattscope.db`, 159,744 bytes, modified
 2026-10-01T22:16:37Z, SHA-256 `87DC59BB...1B556E`) was hashed before the first
@@ -423,6 +427,82 @@ machine without the WebView2 runtime or without internet; a standard
 (non-administrator) user and a second Windows account; an elevated launch of
 the *installed* copy (elevated runs were validated on the same build before
 packaging, Phase 6 and the S1 smoke test).
+
+## Phase 10 -- Windows session lifecycle (manual, run by the user) -- PASSED
+
+2026-10-04, the Phase 9 MSI (built from `5ca97f7` plus the MSI-only setting;
+the commit after it changed documentation only) installed under
+`C:\Program Files\WattScope`, launched unelevated from the Start menu, against
+the **normal** database. Every event was a real user action. Before each
+event the running session was recorded; after it, and **before** WattScope
+was launched again, the processes, auto-start locations, Windows event logs
+and a copy of the database with its write-ahead log were examined. The
+original database was never opened by the inspection. Evidence (reports and
+database copies, outside the repository):
+`C:\WattScopeBackup\phase10-evidence\`.
+
+| Checklist | Event (Windows evidence) | Session | Result |
+|---|---|---|---|
+| D3 | **Sign-out** 14:27:45 (session logoff succeeded; new logon 14:27:53) | #26, window open, 211 samples | left `Active`; last observation 14:27:32.619 |
+| D2 | **Restart** 14:39:42 logoff, "Power Action Reboot", OS stop 14:39:48, start 14:40:10.5, boot type 0x0, new kernel boot time | #27, window hidden in the tray, 349 samples | left `Active`; last observation 14:39:33.241 |
+| D1 | **Shut down** requested 14:52:11 from the Start menu; Fast Startup proven (boot type 0x1, resume record, kernel boot time unchanged); off for 66 min 41 s; power-on 15:59:00 | #28, window open, 394 samples | left `Active`; last observation 14:52:03.332 |
+| D4 | **Sleep (S3)** 16:09:49.299 -> wake 16:14:52.636 (303.3 s; target state S3; no logoff or boot) | #29, window open | same session, same host / sidecar / WebView2 processes; **one** gap, reason `Suspend`, 16:09:49.416 -> 16:14:53.605 |
+| D5 | after each of the three session ends | | no WattScope process, no new session, no Run / RunOnce / Startup / service / task entry before the manual launch |
+| D6 | Modern Standby | | **not testable here**: `powercfg /a` lists S3, hibernate and Fast Startup; S0 Low Power Idle is not supported by the firmware |
+
+**Session ends (D1-D3).** In all three cases the session was **not** closed
+as `Stopped`: Windows ended the processes first, with no "apps are preventing"
+screen and no delay (2 s from the shutdown request to the completed logoff).
+On disk the session stayed `Active` with its write-ahead log; the next manual
+launch closed it as `Interrupted` ("Recovered: the recording process ended
+without stopping the session.") with the end time **equal to its last
+persisted observation**, and started exactly one new session. Compared row by
+row before and after recovery, no sample, bucket or price split was changed
+or added; only the session row and the two open sensor-availability runs were
+closed. Stored monitored time equals the time spanned by the samples and the
+stored energy equals a recomputation from the raw samples (within 0.03 J), so
+nothing covers the time the app was absent. What is missing is real: data is
+written about every 10 s, so the last 8-13 s before each event are not in the
+database. They are never estimated.
+
+**Sleep (D4).** Wall clock from session start to the last observation at the
+time of the check: 734.192 s; monitored 429.997 s; recorded gap 304.189 s.
+Stored GPU energy 18,105.375 J equals the sum of the two sampled segments
+(312.006 s + 117.991 s; 18,105.381 J). Integrating across the sleep would
+have added 13,271 J of GPU energy and 31,645 J to the estimate; it is not
+there. After the wake the intervals were 982-1,016 ms with no catch-up burst.
+The session was then ended with the tray Exit: `Stopped (--serve exiting)` at
+16:18:20.867, 521 samples, monitored 518.997 s, Partial 53,094.199 J, still
+exactly one gap, write-ahead log checkpointed and removed, no process left.
+
+**Database.** Schema 4, `integrity_check` ok and no foreign-key violation
+after every step; all 29 sessions consistent (no open session, no sample
+outside its session, no duplicate gap, no overlapping availability run);
+every row that existed before Phase 10 unchanged. Final SHA-256
+`97109213...3FD4070A`. Baseline backup:
+`C:\WattScopeBackup\phase10-20261003-001746`.
+
+**Errors.** No Application Error, Application Hang, Windows Error Reporting
+or .NET Runtime event and no crash file for `wattscope.exe`,
+`wattscope-probe.exe` or WattScope's WebView2 in any of the four tests.
+Windows logged a popup "powershell.exe - Application Error ... (0xc0000142)"
+a few seconds before the logoff completed in the sign-out (14:27:42) and the
+restart (14:39:38), not in the shutdown. WattScope's host and sidecar never
+start PowerShell, no logoff script, Run entry or scheduled task uses it, and
+the launcher is not recorded; it is noted as an open observation, not as a
+WattScope defect.
+
+Known non-blockers found here (checklist Known issues 8-10): session ends by
+Windows are recorded as `Interrupted`, not `Stopped`; the UI shows no notice
+about a recovered session; the PowerShell popup above. The comment on the
+host's exit handler (`desktop/src-tauri/src/lib.rs`) and the sidecar's
+termination-signal handler describe a clean stop when the OS ends the
+session; the real tests did not show that, and no code was changed.
+
+**Not covered:** Modern Standby (D6); hibernate; sleep with the window hidden
+in the tray; sleep or a session end during an elevated (Complete) session; a
+sleep whose notification is missed (only the elapsed-time fallback tests);
+how an `Interrupted` session is labelled on the Reports page; other hardware.
 
 ## Phase 3 -- long-session stability (soak)
 

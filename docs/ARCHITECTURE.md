@@ -286,8 +286,14 @@ torn down by something else. If even that does not complete (for example the
 OS ends the session abruptly), the sidecar notices stdin closing, and
 Milestone 002 crash recovery is the final safety net: an `Active` session
 with no live recorder is closed as `Interrupted` at its last persisted
-observation. Whether Windows logoff/shutdown/restart reliably reaches these
-handlers was **not** verified (it needs a real logoff); see PROJECT_STATE.md.
+observation. **Verified with real Windows session ends (pre-release Phase
+10, PROJECT_STATE.md):** on sign-out, restart and shutdown the session was
+*not* closed by these handlers in any of the three tests -- Windows ended the
+processes first. Each session stayed `Active` on disk and was closed as
+`Interrupted` at its last persisted observation by the next launch, with no
+time or energy added. So for a Windows session end the recovery path is the
+one that actually runs; the clean stop was only observed for the tray Exit
+and for the Restart Manager during an uninstall.
 ## Gaming (Milestone 005)
 
 Full design: `docs/GAMING.md`. In short:

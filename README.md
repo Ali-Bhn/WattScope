@@ -10,9 +10,11 @@ first desktop application, `desktop/`), and Milestone 004 (tray, single
 instance, monitoring/sidecar lifecycle), Milestone 005 (gaming session
 detection and energy analytics) and Milestone 006 (application completion:
 reports, settings, price history, first run, diagnostics, data management) --
-see `docs/PROJECT_STATE.md`. The application is feature complete; real-world
-validation (real game, installers, Administrator, shutdown/logoff) is
-deliberately deferred and **unverified** -- `docs/PRE_RELEASE_CHECKLIST.md`.
+see `docs/PROJECT_STATE.md`. The application is feature complete and in
+pre-release validation: a real game, an Administrator launch, the MSI
+installer lifecycle and Windows sign-out / restart / shutdown / sleep have
+been validated on the development machine. What is still open or unverified
+is listed in `docs/PRE_RELEASE_CHECKLIST.md`.
 
 ## Projects
 

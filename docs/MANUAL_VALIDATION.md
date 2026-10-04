@@ -12,13 +12,13 @@ anything not run there is marked **UNVERIFIED**.
 
 | # | Procedure | Status |
 |---|---|---|
-| 1 | Sleep / resume | **VERIFIED / PASSED** (2026-10-01, Session #18; details below and in `PROJECT_STATE.md`) |
+| 1 | Sleep / resume | **VERIFIED / PASSED** (2026-10-01, Session #18; again 2026-10-04 on the installed build, session #29, `PROJECT_STATE.md` Phase 10). Modern Standby, hibernate, an elevated session and a tray-hidden window: UNVERIFIED |
 | 2 | System tray | **Partly verified**: only *Exit WattScope* was exercised (during procedure 1). Icon, tooltip, item states/live text, Start/Stop/Open/Settings, menu language: UNVERIFIED |
-| 3 | Logoff / shutdown / restart | UNVERIFIED |
+| 3 | Logoff / shutdown / restart | **VERIFIED / PASSED** (2026-10-04, sessions #26-#28; each recovered as `Interrupted`, none ended as `Stopped`; no self-start; `PROJECT_STATE.md` Phase 10) |
 | 4 | Administrator launch | **VERIFIED / PASSED** (2026-10-02, session #20, Complete with cost; `PROJECT_STATE.md` Phase 6) |
 | 5 | Persian / RTL visual check | **VERIFIED** on every page of the production app in the real WebView2 (2026-10-02, pre-release validation Phase 5 in `PROJECT_STATE.md`); a native reader has not reviewed the wording |
 | 6 | Installers | **VERIFIED / PASSED** for the MSI (2026-10-02/03: install, run, uninstall, reinstall, uninstall while running; `PROJECT_STATE.md` Phase 9). Version-to-version upgrade, SmartScreen on a downloaded copy, a machine without WebView2, a standard user / second account and an elevated launch of the installed copy: UNVERIFIED |
-| 7 | Gaming session with a real game (Call of Duty / Warzone via Battle.net) | **UNVERIFIED** -- not run; the automated suite and the non-game real validation (`PROJECT_STATE.md`, Milestone 005) are done, but no real game was launched |
+| 7 | Gaming session with a real game (Call of Duty / Warzone via Battle.net) | **VERIFIED / PASSED unelevated** (2026-10-02, `PROJECT_STATE.md` Phase 7: `cod.exe` detected automatically, one Partial session). An elevated (Complete) gaming session and a second real game: UNVERIFIED |
 
 All procedures use the packaged app (`desktop/src-tauri/target/release/wattscope.exe`
 or the installed one) and the CLI that ships beside it
@@ -102,6 +102,15 @@ Best effort by design; crash recovery is the safety net.
    is not -- it is recovered to `Interrupted` by the next command).
 4. Confirm WattScope did **not** start by itself, and there is no
    `wattscope*.exe` process.
+
+**Recorded result (2026-10-04, run by the user, installed MSI build,
+unelevated): PASSED.** Sign-out (#26), restart (#27, window hidden in the
+tray) and shutdown with Fast Startup (#28) each left the session `Active` on
+disk; the next manual launch closed it as `Interrupted` at its last persisted
+observation and started exactly one new session. No session ended as
+`Stopped`. WattScope never started by itself. Checking before the relaunch
+needs a copy of the database: any `wattscope-probe.exe` command would itself
+perform the recovery.
 
 ## 4. Administrator launch (interim limitation)
 
